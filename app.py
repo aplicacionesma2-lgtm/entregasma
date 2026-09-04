@@ -254,7 +254,7 @@ st.markdown(
 # --------------------------------------------------------------------------
 # Tabla de detalle
 # --------------------------------------------------------------------------
-st.markdown('<div class="section-title">Detalle</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">Detalle de Entregas por ST's</div>', unsafe_allow_html=True)
 
 tabla_cols = [
     "Número de documento",
