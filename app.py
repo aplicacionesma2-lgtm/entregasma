@@ -2,8 +2,8 @@
 Panel de Documentos Pendientes de Atención
 --------------------------------------------
 Lee los registros filtrados desde Google Sheets y permite explorar,
-por fecha de vencimiento y almacén, qué documentos tienen cantidad
-pendiente de atender.
+por fecha de vencimiento, almacenes, documento o artículos,
+qué documentos tienen cantidad pendiente de atender.
 """
 
 import pandas as pd
@@ -90,7 +90,7 @@ st.markdown(
 )
 
 # --------------------------------------------------------------------------
-# Carga de datos desde Google Sheets
+# Carga de datos desde Google Sheets con manejo de excepciones
 # --------------------------------------------------------------------------
 REQUIRED_COLS = [
     "Número de documento",
@@ -108,8 +108,12 @@ REQUIRED_COLS = [
 
 @st.cache_data(ttl=300, show_spinner="Cargando datos desde Google Sheets…")
 def load_data() -> pd.DataFrame:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(worksheet="Sheet1", ttl=300)
+    try:
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        df = conn.read(worksheet="Sheet1", ttl=300)
+    except Exception as e:
+        st.error(f"Error al conectar con Google Sheets. Revisa la configuración de `secrets.toml`: {e}")
+        st.stop()
 
     df = df.dropna(how="all")
     faltantes = [c for c in REQUIRED_COLS if c not in df.columns]
@@ -129,11 +133,11 @@ def load_data() -> pd.DataFrame:
     df["De código de almacén"] = df["De código de almacén"].astype(str).str.strip()
     df["Código de almacén"] = df["Código de almacén"].astype(str).str.strip()
     df["Status de documento"] = df["Status de documento"].astype(str).str.strip()
+    df["Número de documento"] = df["Número de documento"].astype(str).str.strip()
+    df["Número de artículo"] = df["Número de artículo"].astype(str).str.strip()
+    df["Descripción del artículo"] = df["Descripción del artículo"].astype(str).str.strip()
 
-    # Filtro de negocio: se EXCLUYEN los registros con documento cerrado (C),
-    # saldo pendiente y nada atendido todavía; se conserva todo lo demás.
-    # Se aplica aquí también por seguridad, en caso de que la hoja contenga
-    # registros sin filtrar.
+    # Filtro de negocio: excluir registros Status C con pendiente > 0 y nada atendido
     excluir = (
         (df["Status de documento"] == "C")
         & (df["CantidadPendiente"] > 0)
@@ -157,37 +161,63 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.markdown(
-    '<div class="app-subtitle">Filtra por fecha de vencimiento y almacén para ver qué queda por atender.</div>',
+    '<div class="app-subtitle">Filtra por fecha, almacén, documento o artículo para evaluar saldos pendientes.</div>',
     unsafe_allow_html=True,
 )
 
 # --------------------------------------------------------------------------
-# Filtros en cascada: Fecha -> De código de almacén -> Código de almacén
+# Filtros Fila 1: Fecha -> De código de almacén -> Código de almacén (con opción TODOS)
 # --------------------------------------------------------------------------
 col1, col2, col3 = st.columns(3)
 
-fechas_disponibles = sorted(df["Fecha de vencimiento"].dropna().unique())
+fechas_disponibles = ["TODOS"] + sorted(df["Fecha de vencimiento"].dropna().unique())
 
 with col1:
     fecha_sel = st.selectbox(
         "Fecha de vencimiento",
         options=fechas_disponibles,
-        format_func=lambda d: d.strftime("%d/%m/%Y"),
+        format_func=lambda d: "TODOS" if d == "TODOS" else d.strftime("%d/%m/%Y"),
     )
 
-df_fecha = df[df["Fecha de vencimiento"] == fecha_sel]
+df_fecha = df if fecha_sel == "TODOS" else df[df["Fecha de vencimiento"] == fecha_sel]
 
 with col2:
-    de_almacenes = sorted(df_fecha["De código de almacén"].dropna().unique())
+    de_almacenes = ["TODOS"] + sorted(df_fecha["De código de almacén"].dropna().unique())
     de_almacen_sel = st.selectbox("De código de almacén", options=de_almacenes)
 
-df_de_almacen = df_fecha[df_fecha["De código de almacén"] == de_almacen_sel]
+df_de_almacen = df_fecha if de_almacen_sel == "TODOS" else df_fecha[df_fecha["De código de almacén"] == de_almacen_sel]
 
 with col3:
-    almacenes = sorted(df_de_almacen["Código de almacén"].dropna().unique())
+    almacenes = ["TODOS"] + sorted(df_de_almacen["Código de almacén"].dropna().unique())
     almacen_sel = st.selectbox("Código de almacén", options=almacenes)
 
-df_sel = df_de_almacen[df_de_almacen["Código de almacén"] == almacen_sel]
+df_almacen = df_de_almacen if almacen_sel == "TODOS" else df_de_almacen[df_de_almacen["Código de almacén"] == almacen_sel]
+
+# --------------------------------------------------------------------------
+# Filtros Fila 2: Búsqueda avanzada por Documento, Código y Descripción
+# --------------------------------------------------------------------------
+col4, col5, col6 = st.columns(3)
+
+with col4:
+    doc_sel = st.text_input("Número de documento", value="", placeholder="Ej: 105423")
+
+with col5:
+    art_sel = st.text_input("Número de artículo", value="", placeholder="Ej: INS-0012")
+
+with col6:
+    desc_sel = st.text_input("Descripción del artículo", value="", placeholder="Ej: Harina de trigo")
+
+# Aplicar filtros de texto opcionales
+df_sel = df_almacen.copy()
+
+if doc_sel.strip():
+    df_sel = df_sel[df_sel["Número de documento"].str.contains(doc_sel.strip(), case=False, na=False)]
+
+if art_sel.strip():
+    df_sel = df_sel[df_sel["Número de artículo"].str.contains(art_sel.strip(), case=False, na=False)]
+
+if desc_sel.strip():
+    df_sel = df_sel[df_sel["Descripción del artículo"].str.contains(desc_sel.strip(), case=False, na=False)]
 
 # --------------------------------------------------------------------------
 # Métricas
