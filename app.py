@@ -38,7 +38,7 @@ st.markdown(
         margin-bottom: 0.1rem;
     }
     .app-header h1 {
-        font-size: 1.65rem;
+        font-size: 2rem;
         font-weight: 700;
         color: #1B2A38;
         margin: 0;
@@ -157,7 +157,7 @@ if df.empty:
 # Encabezado
 # --------------------------------------------------------------------------
 st.markdown(
-    '<div class="app-header">📦<h1>Documentos pendientes de atención</h1></div>',
+    '<div class="app-header">📦<h1>Registro de Entregas de Producto Terminado</h1></div>',
     unsafe_allow_html=True,
 )
 st.markdown(
