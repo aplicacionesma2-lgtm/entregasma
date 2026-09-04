@@ -161,7 +161,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.markdown(
-    '<div class="app-subtitle">Filtra por fecha, almacén, documento o artículo para visualizar entregas.</div>',
+    '<div class="app-subtitle">Filtra por fecha, almacén, orden de fabricación o artículo para visualizar entregas.</div>',
     unsafe_allow_html=True,
 )
 
