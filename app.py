@@ -49,7 +49,7 @@ st.markdown(
     .app-header h1 {
         font-size: 2.5rem;
         font-weight: 700;
-        color: #A0C4FF;
+        color: #70D6FF;
         margin: 0;
     }
     .app-subtitle {
