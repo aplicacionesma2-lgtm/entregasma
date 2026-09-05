@@ -13,7 +13,7 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import landscape, letter
+from reportlab.lib.pagesizes import letter, portrait
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -99,45 +99,45 @@ st.markdown(
 )
 
 # --------------------------------------------------------------------------
-# Función para generar el PDF del Resumen por Artículo
+# Función para generar el PDF compacto (3 columnas, fuente reducida)
 # --------------------------------------------------------------------------
 def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
-        pagesize=landscape(letter),
-        rightMargin=1.5 * cm,
-        leftMargin=1.5 * cm,
-        topMargin=1.5 * cm,
-        bottomMargin=1.5 * cm,
+        pagesize=portrait(letter),
+        rightMargin=1.0 * cm,
+        leftMargin=1.0 * cm,
+        topMargin=1.0 * cm,
+        bottomMargin=1.0 * cm,
     )
 
     story = []
     styles = getSampleStyleSheet()
 
-    # Estilos de texto
+    # Estilos de texto compactos
     title_style = ParagraphStyle(
         'DocTitle',
         parent=styles['Heading1'],
         fontName='Helvetica-Bold',
-        fontSize=18,
+        fontSize=15,
         textColor=colors.HexColor('#1B2A38'),
-        spaceAfter=4,
+        spaceAfter=2,
     )
 
     subtitle_style = ParagraphStyle(
         'DocSubTitle',
         parent=styles['Normal'],
         fontName='Helvetica',
-        fontSize=9,
+        fontSize=8,
         textColor=colors.HexColor('#5A6B7A'),
-        spaceAfter=12,
+        spaceAfter=8,
     )
 
     cell_header_style = ParagraphStyle(
         'HeaderCell',
         fontName='Helvetica-Bold',
-        fontSize=9,
+        fontSize=8,
         textColor=colors.white,
         alignment=0,
     )
@@ -145,7 +145,8 @@ def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
     cell_body_style = ParagraphStyle(
         'BodyCell',
         fontName='Helvetica',
-        fontSize=8.5,
+        fontSize=7.5,
+        leading=9,
         textColor=colors.HexColor('#1B2A38'),
         alignment=0,
     )
@@ -153,7 +154,8 @@ def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
     cell_body_right = ParagraphStyle(
         'BodyCellRight',
         fontName='Helvetica',
-        fontSize=8.5,
+        fontSize=7.5,
+        leading=9,
         textColor=colors.HexColor('#1B2A38'),
         alignment=2,
     )
@@ -161,7 +163,7 @@ def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
     cell_total_style = ParagraphStyle(
         'TotalCell',
         fontName='Helvetica-Bold',
-        fontSize=9,
+        fontSize=8,
         textColor=colors.HexColor('#1B2A38'),
         alignment=2,
     )
@@ -170,15 +172,13 @@ def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
     fecha_emision = datetime.now().strftime("%d/%m/%Y %H:%M")
     story.append(Paragraph("Reporte Resumen por Artículo", title_style))
     story.append(Paragraph(f"Filtros aplicados: {filtros_info} | Generado el: {fecha_emision}", subtitle_style))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 4))
 
-    # 2. Construcción de la tabla
+    # 2. Construcción de la tabla (solo 3 columnas)
     headers = [
         Paragraph("Código Artículo", cell_header_style),
         Paragraph("Descripción del Artículo", cell_header_style),
         Paragraph("Cantidad Total", cell_header_style),
-        Paragraph("Cant. Atendida", cell_header_style),
-        Paragraph("Cant. Pendiente", cell_header_style),
     ]
 
     table_data = [headers]
@@ -188,39 +188,33 @@ def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
             Paragraph(str(row["Número de artículo"]), cell_body_style),
             Paragraph(str(row["Descripción del artículo"]), cell_body_style),
             Paragraph(f"{row['Cantidad']:,.2f}", cell_body_right),
-            Paragraph(f"{row['CantidadAtendida']:,.2f}", cell_body_right),
-            Paragraph(f"{row['CantidadPendiente']:,.2f}", cell_body_right),
         ])
 
     # Fila de totales
     tot_cant = df_resumen["Cantidad"].sum()
-    tot_atend = df_resumen["CantidadAtendida"].sum()
-    tot_pend = df_resumen["CantidadPendiente"].sum()
 
     table_data.append([
-        Paragraph("<b>TOTALES GENERALES</b>", cell_body_style),
+        Paragraph("<b>TOTAL GENERAL</b>", cell_body_style),
         Paragraph("", cell_body_style),
         Paragraph(f"{tot_cant:,.2f}", cell_total_style),
-        Paragraph(f"{tot_atend:,.2f}", cell_total_style),
-        Paragraph(f"{tot_pend:,.2f}", cell_total_style),
     ])
 
-    # Anchos de columnas
-    col_widths = [3.5 * cm, 12 * cm, 3.2 * cm, 3.2 * cm, 3.2 * cm]
+    # Anchos de columnas ajustados a la página vertical
+    col_widths = [4.0 * cm, 11.5 * cm, 4.0 * cm]
 
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
-    # Estilos visuales de la tabla
+    # Estilos visuales optimizados para mayor densidad de filas
     ts = TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1B2A38')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5),
+        ('TOPPADDING', (0, 0), (-1, -1), 2.5),
         ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#F8FAFC')]),
         ('GRID', (0, 0), (-1, -2), 0.5, colors.HexColor('#E2E8F0')),
-        ('LINEABOVE', (0, -1), (-1, -1), 1.5, colors.HexColor('#1B2A38')),
+        ('LINEABOVE', (0, -1), (-1, -1), 1.2, colors.HexColor('#1B2A38')),
         ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#EDF2F7')),
     ])
     table.setStyle(ts)
