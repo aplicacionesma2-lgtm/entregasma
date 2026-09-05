@@ -272,11 +272,11 @@ if df.empty:
 # Encabezado
 # --------------------------------------------------------------------------
 st.markdown(
-    '<div class="app-header">📦<h1>Documentos pendientes de atención</h1></div>',
+    '<div class="app-header">📦<h1>Registro de Entrega de Productos Terminados</h1></div>',
     unsafe_allow_html=True,
 )
 st.markdown(
-    '<div class="app-subtitle">Filtra por fecha, almacén, documento o artículo para evaluar saldos pendientes.</div>',
+    '<div class="app-subtitle">Filtra por fecha, almacén, orden de fabricación o artículo para visualizar registros.</div>',
     unsafe_allow_html=True,
 )
 
