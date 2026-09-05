@@ -47,9 +47,9 @@ st.markdown(
         margin-bottom: 0.1rem;
     }
     .app-header h1 {
-        font-size: 2.5rem;
+        font-size: 1.65rem;
         font-weight: 700;
-        color: #1F7A59;
+        color: #1B2A38;
         margin: 0;
     }
     .app-subtitle {
@@ -160,13 +160,13 @@ def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
         alignment=2,
     )
 
-    # 1. Encabezado del reporte
+    # Encabezado del reporte
     fecha_emision = datetime.now().strftime("%d/%m/%Y %H:%M")
     story.append(Paragraph("Reporte Resumen por Artículo", title_style))
     story.append(Paragraph(f"Filtros aplicados: {filtros_info} | Generado el: {fecha_emision}", subtitle_style))
     story.append(Spacer(1, 4))
 
-    # 2. Construcción de la tabla (3 columnas sin totales)
+    # Construcción de la tabla (3 columnas)
     headers = [
         Paragraph("Código Artículo", cell_header_style),
         Paragraph("Descripción del Artículo", cell_header_style),
@@ -182,12 +182,10 @@ def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
             Paragraph(f"{row['Cantidad']:,.2f}", cell_body_right),
         ])
 
-    # Anchos de columnas ajustados a la página vertical
     col_widths = [4.0 * cm, 11.5 * cm, 4.0 * cm]
 
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
-    # Estilos visuales optimizados para mayor densidad de filas
     ts = TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1B2A38')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -207,7 +205,7 @@ def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
 
 
 # --------------------------------------------------------------------------
-# Carga de datos desde Google Sheets con manejo de excepciones
+# Carga de datos desde Google Sheets
 # --------------------------------------------------------------------------
 REQUIRED_COLS = [
     "Número de documento",
@@ -274,29 +272,41 @@ if df.empty:
 # Encabezado
 # --------------------------------------------------------------------------
 st.markdown(
-    '<div class="app-header">📦<h1>Registro de Entregas de Producto Terminado</h1></div>',
+    '<div class="app-header">📦<h1>Documentos pendientes de atención</h1></div>',
     unsafe_allow_html=True,
 )
 st.markdown(
-    '<div class="app-subtitle">Filtra por cualquier campo para visualizar registros.</div>',
+    '<div class="app-subtitle">Filtra por fecha, almacén, documento o artículo para evaluar saldos pendientes.</div>',
     unsafe_allow_html=True,
 )
 
 # --------------------------------------------------------------------------
-# Filtros Fila 1: Fecha -> De código de almacén -> Código de almacén (con opción TODOS)
+# Filtros Fila 1: Calendario Rango de Fechas -> De código -> Código de almacén
 # --------------------------------------------------------------------------
 col1, col2, col3 = st.columns(3)
 
-fechas_disponibles = ["TODOS"] + sorted(df["Fecha de vencimiento"].dropna().unique())
+# Obtener los límites del dataset para inicializar el calendario
+fechas_validas = df["Fecha de vencimiento"].dropna()
+min_fecha = fechas_validas.min()
+max_fecha = fechas_validas.max()
 
 with col1:
-    fecha_sel = st.selectbox(
+    rango_fechas = st.date_input(
         "Fecha de vencimiento",
-        options=fechas_disponibles,
-        format_func=lambda d: "TODOS" if d == "TODOS" else d.strftime("%d/%m/%Y"),
+        value=(min_fecha, max_fecha),
+        min_value=min_fecha,
+        max_value=max_fecha,
+        format="DD/MM/YYYY",
     )
 
-df_fecha = df if fecha_sel == "TODOS" else df[df["Fecha de vencimiento"] == fecha_sel]
+# Filtrar por el rango de fechas seleccionado en el calendario
+if isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 2:
+    f_inicio, f_fin = rango_fechas
+    df_fecha = df[(df["Fecha de vencimiento"] >= f_inicio) & (df["Fecha de vencimiento"] <= f_fin)]
+elif isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 1:
+    df_fecha = df[df["Fecha de vencimiento"] == rango_fechas[0]]
+else:
+    df_fecha = df.copy()
 
 with col2:
     de_almacenes = ["TODOS"] + sorted(df_fecha["De código de almacén"].dropna().unique())
@@ -425,7 +435,13 @@ st.dataframe(
 # Exportar Resumen a PDF
 # --------------------------------------------------------------------------
 if not resumen.empty:
-    fecha_txt = fecha_sel.strftime("%d/%m/%Y") if fecha_sel != "TODOS" else "TODAS"
+    if isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 2:
+        fecha_txt = f"{rango_fechas[0].strftime('%d/%m/%Y')} a {rango_fechas[1].strftime('%d/%m/%Y')}"
+    elif isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 1:
+        fecha_txt = rango_fechas[0].strftime("%d/%m/%Y")
+    else:
+        fecha_txt = "TODAS"
+
     filtros_str = f"Fecha: {fecha_txt} | De: {de_almacen_sel} | A: {almacen_sel}"
 
     pdf_bytes = generar_pdf_resumen(resumen, filtros_str)
