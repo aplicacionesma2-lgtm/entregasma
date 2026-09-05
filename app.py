@@ -4,10 +4,19 @@ Panel de Documentos Pendientes de Atención
 Lee los registros filtrados desde Google Sheets y permite explorar,
 por fecha de vencimiento, almacenes, documento o artículos,
 qué documentos tienen cantidad pendiente de atender.
+Permite además exportar el resumen agrupado a un archivo PDF.
 """
+
+from datetime import datetime
+from io import BytesIO
 
 import pandas as pd
 import streamlit as st
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import landscape, letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from streamlit_gsheets import GSheetsConnection
 
 # --------------------------------------------------------------------------
@@ -38,7 +47,7 @@ st.markdown(
         margin-bottom: 0.1rem;
     }
     .app-header h1 {
-        font-size: 2rem;
+        font-size: 1.65rem;
         font-weight: 700;
         color: #1B2A38;
         margin: 0;
@@ -88,6 +97,139 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# --------------------------------------------------------------------------
+# Función para generar el PDF del Resumen por Artículo
+# --------------------------------------------------------------------------
+def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        rightMargin=1.5 * cm,
+        leftMargin=1.5 * cm,
+        topMargin=1.5 * cm,
+        bottomMargin=1.5 * cm,
+    )
+
+    story = []
+    styles = getSampleStyleSheet()
+
+    # Estilos de texto
+    title_style = ParagraphStyle(
+        'DocTitle',
+        parent=styles['Heading1'],
+        fontName='Helvetica-Bold',
+        fontSize=18,
+        textColor=colors.HexColor('#1B2A38'),
+        spaceAfter=4,
+    )
+
+    subtitle_style = ParagraphStyle(
+        'DocSubTitle',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=9,
+        textColor=colors.HexColor('#5A6B7A'),
+        spaceAfter=12,
+    )
+
+    cell_header_style = ParagraphStyle(
+        'HeaderCell',
+        fontName='Helvetica-Bold',
+        fontSize=9,
+        textColor=colors.white,
+        alignment=0,
+    )
+
+    cell_body_style = ParagraphStyle(
+        'BodyCell',
+        fontName='Helvetica',
+        fontSize=8.5,
+        textColor=colors.HexColor('#1B2A38'),
+        alignment=0,
+    )
+
+    cell_body_right = ParagraphStyle(
+        'BodyCellRight',
+        fontName='Helvetica',
+        fontSize=8.5,
+        textColor=colors.HexColor('#1B2A38'),
+        alignment=2,
+    )
+
+    cell_total_style = ParagraphStyle(
+        'TotalCell',
+        fontName='Helvetica-Bold',
+        fontSize=9,
+        textColor=colors.HexColor('#1B2A38'),
+        alignment=2,
+    )
+
+    # 1. Encabezado del reporte
+    fecha_emision = datetime.now().strftime("%d/%m/%Y %H:%M")
+    story.append(Paragraph("Reporte Resumen por Artículo", title_style))
+    story.append(Paragraph(f"Filtros aplicados: {filtros_info} | Generado el: {fecha_emision}", subtitle_style))
+    story.append(Spacer(1, 8))
+
+    # 2. Construcción de la tabla
+    headers = [
+        Paragraph("Código Artículo", cell_header_style),
+        Paragraph("Descripción del Artículo", cell_header_style),
+        Paragraph("Cantidad Total", cell_header_style),
+        Paragraph("Cant. Atendida", cell_header_style),
+        Paragraph("Cant. Pendiente", cell_header_style),
+    ]
+
+    table_data = [headers]
+
+    for _, row in df_resumen.iterrows():
+        table_data.append([
+            Paragraph(str(row["Número de artículo"]), cell_body_style),
+            Paragraph(str(row["Descripción del artículo"]), cell_body_style),
+            Paragraph(f"{row['Cantidad']:,.2f}", cell_body_right),
+            Paragraph(f"{row['CantidadAtendida']:,.2f}", cell_body_right),
+            Paragraph(f"{row['CantidadPendiente']:,.2f}", cell_body_right),
+        ])
+
+    # Fila de totales
+    tot_cant = df_resumen["Cantidad"].sum()
+    tot_atend = df_resumen["CantidadAtendida"].sum()
+    tot_pend = df_resumen["CantidadPendiente"].sum()
+
+    table_data.append([
+        Paragraph("<b>TOTALES GENERALES</b>", cell_body_style),
+        Paragraph("", cell_body_style),
+        Paragraph(f"{tot_cant:,.2f}", cell_total_style),
+        Paragraph(f"{tot_atend:,.2f}", cell_total_style),
+        Paragraph(f"{tot_pend:,.2f}", cell_total_style),
+    ])
+
+    # Anchos de columnas
+    col_widths = [3.5 * cm, 12 * cm, 3.2 * cm, 3.2 * cm, 3.2 * cm]
+
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
+
+    # Estilos visuales de la tabla
+    ts = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1B2A38')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#F8FAFC')]),
+        ('GRID', (0, 0), (-1, -2), 0.5, colors.HexColor('#E2E8F0')),
+        ('LINEABOVE', (0, -1), (-1, -1), 1.5, colors.HexColor('#1B2A38')),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#EDF2F7')),
+    ])
+    table.setStyle(ts)
+    story.append(table)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
 
 # --------------------------------------------------------------------------
 # Carga de datos desde Google Sheets con manejo de excepciones
@@ -157,11 +299,11 @@ if df.empty:
 # Encabezado
 # --------------------------------------------------------------------------
 st.markdown(
-    '<div class="app-header">📦<h1>Registro de Entregas de Producto Terminado</h1></div>',
+    '<div class="app-header">📦<h1>Documentos pendientes de atención</h1></div>',
     unsafe_allow_html=True,
 )
 st.markdown(
-    '<div class="app-subtitle">Filtra por fecha, almacén, orden de fabricación o artículo para visualizar entregas.</div>',
+    '<div class="app-subtitle">Filtra por fecha, almacén, documento o artículo para evaluar saldos pendientes.</div>',
     unsafe_allow_html=True,
 )
 
@@ -202,10 +344,10 @@ with col4:
     doc_sel = st.text_input("Número de documento", value="", placeholder="Ej: 105423")
 
 with col5:
-    art_sel = st.text_input("Número de artículo", value="", placeholder="Ej: INS-0012")
+    art_sel = st.text_input("Número de artículo", value="", placeholder="Ej: M6020039")
 
 with col6:
-    desc_sel = st.text_input("Descripción del artículo", value="", placeholder="Ej: Harina de trigo")
+    desc_sel = st.text_input("Descripción del artículo", value="", placeholder="Ej: ALFAJOR")
 
 # Aplicar filtros de texto opcionales
 df_sel = df_almacen.copy()
@@ -254,7 +396,7 @@ st.markdown(
 # --------------------------------------------------------------------------
 # Tabla de detalle
 # --------------------------------------------------------------------------
-st.markdown('<div class="section-title">Detalle de Entregas por STs</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">Detalle</div>', unsafe_allow_html=True)
 
 tabla_cols = [
     "Número de documento",
@@ -303,3 +445,22 @@ st.dataframe(
         "CantidadPendiente": st.column_config.NumberColumn(format="%.2f"),
     },
 )
+
+# --------------------------------------------------------------------------
+# Exportar Resumen a PDF
+# --------------------------------------------------------------------------
+if not resumen.empty:
+    fecha_txt = fecha_sel.strftime("%d/%m/%Y") if fecha_sel != "TODOS" else "TODAS"
+    filtros_str = f"Fecha: {fecha_txt} | De: {de_almacen_sel} | A: {almacen_sel}"
+
+    pdf_bytes = generar_pdf_resumen(resumen, filtros_str)
+
+    col_pdf, _ = st.columns([1, 3])
+    with col_pdf:
+        st.download_button(
+            label="📄 Exportar Resumen a PDF",
+            data=pdf_bytes,
+            file_name=f"resumen_articulos_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
