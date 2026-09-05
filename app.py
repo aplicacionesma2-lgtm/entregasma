@@ -99,7 +99,7 @@ st.markdown(
 )
 
 # --------------------------------------------------------------------------
-# Función para generar el PDF compacto (3 columnas, fuente reducida)
+# Función para generar el PDF compacto (sin fila de Total General)
 # --------------------------------------------------------------------------
 def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
     buffer = BytesIO()
@@ -160,21 +160,13 @@ def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
         alignment=2,
     )
 
-    cell_total_style = ParagraphStyle(
-        'TotalCell',
-        fontName='Helvetica-Bold',
-        fontSize=8,
-        textColor=colors.HexColor('#1B2A38'),
-        alignment=2,
-    )
-
     # 1. Encabezado del reporte
     fecha_emision = datetime.now().strftime("%d/%m/%Y %H:%M")
     story.append(Paragraph("Reporte Resumen por Artículo", title_style))
     story.append(Paragraph(f"Filtros aplicados: {filtros_info} | Generado el: {fecha_emision}", subtitle_style))
     story.append(Spacer(1, 4))
 
-    # 2. Construcción de la tabla (solo 3 columnas)
+    # 2. Construcción de la tabla (3 columnas sin totales)
     headers = [
         Paragraph("Código Artículo", cell_header_style),
         Paragraph("Descripción del Artículo", cell_header_style),
@@ -190,15 +182,6 @@ def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
             Paragraph(f"{row['Cantidad']:,.2f}", cell_body_right),
         ])
 
-    # Fila de totales
-    tot_cant = df_resumen["Cantidad"].sum()
-
-    table_data.append([
-        Paragraph("<b>TOTAL GENERAL</b>", cell_body_style),
-        Paragraph("", cell_body_style),
-        Paragraph(f"{tot_cant:,.2f}", cell_total_style),
-    ])
-
     # Anchos de columnas ajustados a la página vertical
     col_widths = [4.0 * cm, 11.5 * cm, 4.0 * cm]
 
@@ -212,10 +195,8 @@ def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5),
         ('TOPPADDING', (0, 0), (-1, -1), 2.5),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#F8FAFC')]),
-        ('GRID', (0, 0), (-1, -2), 0.5, colors.HexColor('#E2E8F0')),
-        ('LINEABOVE', (0, -1), (-1, -1), 1.2, colors.HexColor('#1B2A38')),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#EDF2F7')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
     ])
     table.setStyle(ts)
     story.append(table)
