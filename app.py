@@ -1,10 +1,8 @@
 """
-Panel de Documentos Pendientes de Atención
---------------------------------------------
-Lee los registros filtrados desde Google Sheets y permite explorar,
-por fecha de vencimiento, almacenes, documento o artículos,
-qué documentos tienen cantidad pendiente de atender.
-Permite además exportar el resumen agrupado a un archivo PDF.
+Panel de Registro de Entrega de Productos Terminados
+------------------------------------------------------
+Lee los registros desde Google Sheets y permite exportar un PDF
+con la cantidad total por artículo agrupada por cada día del rango.
 """
 
 from datetime import datetime
@@ -13,7 +11,7 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, portrait
+from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -23,13 +21,13 @@ from streamlit_gsheets import GSheetsConnection
 # Configuración general de la página
 # --------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Pendientes de Atención",
+    page_title="Entrega de Productos Terminados",
     page_icon="📦",
     layout="wide",
 )
 
 # --------------------------------------------------------------------------
-# Estilos: tarjetas de métricas y tipografía
+# Estilos CSS
 # --------------------------------------------------------------------------
 st.markdown(
     """
@@ -47,9 +45,9 @@ st.markdown(
         margin-bottom: 0.1rem;
     }
     .app-header h1 {
-        font-size: 2.5rem;
+        font-size: 1.65rem;
         font-weight: 700;
-        color: #1D4ED8;
+        color: #1B2B85;
         margin: 0;
     }
     .app-subtitle {
@@ -99,29 +97,29 @@ st.markdown(
 )
 
 # --------------------------------------------------------------------------
-# Función para generar el PDF compacto (sin fila de Total General)
+# Función PDF con pivote por Fecha (Horizontal / Landscape)
 # --------------------------------------------------------------------------
-def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
+def generar_pdf_resumen_por_fecha(df_pivote: pd.DataFrame, filtros_info: str) -> BytesIO:
     buffer = BytesIO()
+    # Usamos Landscape (Horizontal) para acomodar múltiples fechas
     doc = SimpleDocTemplate(
         buffer,
-        pagesize=portrait(letter),
-        rightMargin=1.0 * cm,
-        leftMargin=1.0 * cm,
-        topMargin=1.0 * cm,
-        bottomMargin=1.0 * cm,
+        pagesize=landscape(letter),
+        rightMargin=0.8 * cm,
+        leftMargin=0.8 * cm,
+        topMargin=0.8 * cm,
+        bottomMargin=0.8 * cm,
     )
 
     story = []
     styles = getSampleStyleSheet()
 
-    # Estilos de texto compactos
     title_style = ParagraphStyle(
         'DocTitle',
         parent=styles['Heading1'],
         fontName='Helvetica-Bold',
-        fontSize=15,
-        textColor=colors.HexColor('#1B2A38'),
+        fontSize=14,
+        textColor=colors.HexColor('#1B2B85'),
         spaceAfter=2,
     )
 
@@ -131,68 +129,95 @@ def generar_pdf_resumen(df_resumen: pd.DataFrame, filtros_info: str) -> BytesIO:
         fontName='Helvetica',
         fontSize=8,
         textColor=colors.HexColor('#5A6B7A'),
-        spaceAfter=8,
+        spaceAfter=6,
     )
 
     cell_header_style = ParagraphStyle(
         'HeaderCell',
         fontName='Helvetica-Bold',
-        fontSize=8,
+        fontSize=7,
         textColor=colors.white,
-        alignment=0,
+        alignment=1, # Centrado
     )
 
-    cell_body_style = ParagraphStyle(
-        'BodyCell',
+    cell_header_left = ParagraphStyle(
+        'HeaderCellLeft',
+        fontName='Helvetica-Bold',
+        fontSize=7,
+        textColor=colors.white,
+        alignment=0, # Izquierda
+    )
+
+    cell_body_left = ParagraphStyle(
+        'BodyCellLeft',
         fontName='Helvetica',
-        fontSize=7.5,
-        leading=9,
+        fontSize=6.5,
+        leading=8,
         textColor=colors.HexColor('#1B2A38'),
         alignment=0,
     )
 
-    cell_body_right = ParagraphStyle(
-        'BodyCellRight',
+    cell_body_center = ParagraphStyle(
+        'BodyCellCenter',
         fontName='Helvetica',
-        fontSize=7.5,
-        leading=9,
+        fontSize=6.5,
+        leading=8,
         textColor=colors.HexColor('#1B2A38'),
-        alignment=2,
+        alignment=1,
     )
 
-    # Encabezado del reporte
+    # Encabezado
     fecha_emision = datetime.now().strftime("%d/%m/%Y %H:%M")
-    story.append(Paragraph("Reporte Resumen por Artículo", title_style))
-    story.append(Paragraph(f"Filtros aplicados: {filtros_info} | Generado el: {fecha_emision}", subtitle_style))
+    story.append(Paragraph("Resumen de Entregas por Artículo y Día", title_style))
+    story.append(Paragraph(f"Filtros: {filtros_info} | Generado el: {fecha_emision}", subtitle_style))
     story.append(Spacer(1, 4))
 
-    # Construcción de la tabla (3 columnas)
-    headers = [
-        Paragraph("Código Artículo", cell_header_style),
-        Paragraph("Descripción del Artículo", cell_header_style),
-        Paragraph("Cantidad Total", cell_header_style),
-    ]
+    # Construcción de encabezados dinámicos
+    columnas = list(df_pivote.columns)
+    headers = []
+    
+    for col in columnas:
+        if col in ["Número de artículo", "Descripción del artículo"]:
+            headers.append(Paragraph(col, cell_header_left))
+        else:
+            headers.append(Paragraph(str(col), cell_header_style))
 
     table_data = [headers]
 
-    for _, row in df_resumen.iterrows():
-        table_data.append([
-            Paragraph(str(row["Número de artículo"]), cell_body_style),
-            Paragraph(str(row["Descripción del artículo"]), cell_body_style),
-            Paragraph(f"{row['Cantidad']:,.2f}", cell_body_right),
-        ])
+    for _, row in df_pivote.iterrows():
+        fila = []
+        for col in columnas:
+            val = row[col]
+            if col == "Número de artículo":
+                fila.append(Paragraph(str(val), cell_body_left))
+            elif col == "Descripción del artículo":
+                fila.append(Paragraph(str(val), cell_body_left))
+            else:
+                txt_val = f"{val:,.0f}" if val > 0 else "-"
+                fila.append(Paragraph(txt_val, cell_body_center))
+        table_data.append(fila)
 
-    col_widths = [4.0 * cm, 11.5 * cm, 4.0 * cm]
+    # Anchos de columna dinámicos
+    num_fechas = len(columnas) - 2
+    ancho_disponible = 26.3 * cm # Ancho imprimible landscape
+    ancho_codigo = 2.8 * cm
+    ancho_desc = 7.5 * cm
+    
+    if num_fechas > 0:
+        ancho_fecha = min(2.5 * cm, (ancho_disponible - ancho_codigo - ancho_desc) / num_fechas)
+    else:
+        ancho_fecha = 2.0 * cm
+
+    col_widths = [ancho_codigo, ancho_desc] + [ancho_fecha] * num_fechas
 
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
     ts = TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1B2A38')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1B2B85')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5),
-        ('TOPPADDING', (0, 0), (-1, -1), 2.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
     ])
@@ -227,17 +252,13 @@ def load_data() -> pd.DataFrame:
         conn = st.connection("gsheets", type=GSheetsConnection)
         df = conn.read(worksheet="Sheet1", ttl=300)
     except Exception as e:
-        st.error(f"Error al conectar con Google Sheets. Revisa la configuración de `secrets.toml`: {e}")
+        st.error(f"Error al conectar con Google Sheets: {e}")
         st.stop()
 
     df = df.dropna(how="all")
     faltantes = [c for c in REQUIRED_COLS if c not in df.columns]
     if faltantes:
-        st.error(
-            "Faltan columnas en la hoja de cálculo: "
-            + ", ".join(faltantes)
-            + ". Revisa que los encabezados coincidan exactamente."
-        )
+        st.error("Faltan columnas en la hoja de cálculo: " + ", ".join(faltantes))
         st.stop()
 
     df["Fecha de vencimiento"] = pd.to_datetime(
@@ -252,7 +273,6 @@ def load_data() -> pd.DataFrame:
     df["Número de artículo"] = df["Número de artículo"].astype(str).str.strip()
     df["Descripción del artículo"] = df["Descripción del artículo"].astype(str).str.strip()
 
-    # Filtro de negocio: excluir registros Status C con pendiente > 0 y nada atendido
     excluir = (
         (df["Status de documento"] == "C")
         & (df["CantidadPendiente"] > 0)
@@ -265,7 +285,7 @@ def load_data() -> pd.DataFrame:
 df = load_data()
 
 if df.empty:
-    st.warning("No quedaron registros tras excluir Status C con pendiente > 0 y atendida = 0.")
+    st.warning("No quedaron registros disponibles.")
     st.stop()
 
 # --------------------------------------------------------------------------
@@ -281,11 +301,10 @@ st.markdown(
 )
 
 # --------------------------------------------------------------------------
-# Filtros Fila 1: Calendario Rango de Fechas -> De código -> Código de almacén
+# Filtros Fila 1
 # --------------------------------------------------------------------------
 col1, col2, col3 = st.columns(3)
 
-# Obtener los límites del dataset para inicializar el calendario
 fechas_validas = df["Fecha de vencimiento"].dropna()
 min_fecha = fechas_validas.min()
 max_fecha = fechas_validas.max()
@@ -299,7 +318,6 @@ with col1:
         format="DD/MM/YYYY",
     )
 
-# Filtrar por el rango de fechas seleccionado en el calendario
 if isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 2:
     f_inicio, f_fin = rango_fechas
     df_fecha = df[(df["Fecha de vencimiento"] >= f_inicio) & (df["Fecha de vencimiento"] <= f_fin)]
@@ -321,7 +339,7 @@ with col3:
 df_almacen = df_de_almacen if almacen_sel == "TODOS" else df_de_almacen[df_de_almacen["Código de almacén"] == almacen_sel]
 
 # --------------------------------------------------------------------------
-# Filtros Fila 2: Búsqueda avanzada por Documento, Código y Descripción
+# Filtros Fila 2
 # --------------------------------------------------------------------------
 col4, col5, col6 = st.columns(3)
 
@@ -334,7 +352,6 @@ with col5:
 with col6:
     desc_sel = st.text_input("Descripción del artículo", value="", placeholder="Ej: ALFAJOR")
 
-# Aplicar filtros de texto opcionales
 df_sel = df_almacen.copy()
 
 if doc_sel.strip():
@@ -379,7 +396,7 @@ st.markdown(
 )
 
 # --------------------------------------------------------------------------
-# Tabla de detalle
+# Tabla de Detalle
 # --------------------------------------------------------------------------
 st.markdown('<div class="section-title">Detalle</div>', unsafe_allow_html=True)
 
@@ -406,35 +423,31 @@ st.dataframe(
 )
 
 # --------------------------------------------------------------------------
-# Resumen agrupado (sin Número de documento)
+# Resumen agrupado por Día (Pivote)
 # --------------------------------------------------------------------------
-st.markdown('<div class="section-title">Resumen por artículo</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">Resumen de Cantidad por Día y Artículo</div>', unsafe_allow_html=True)
 
-resumen = (
-    df_sel.groupby(["Número de artículo", "Descripción del artículo"], as_index=False)
-    .agg(
-        Cantidad=("Cantidad", "sum"),
-        CantidadAtendida=("CantidadAtendida", "sum"),
-        CantidadPendiente=("CantidadPendiente", "sum"),
+if not df_sel.empty:
+    # Formatear la fecha a String DD/MM/YYYY para las columnas del pivote
+    df_piv = df_sel.copy()
+    df_piv["Fecha_Str"] = pd.to_datetime(df_piv["Fecha de vencimiento"]).dt.strftime("%d/%m/%Y")
+
+    pivote = pd.pivot_table(
+        df_piv,
+        values="Cantidad",
+        index=["Número de artículo", "Descripción del artículo"],
+        columns="Fecha_Str",
+        aggfunc="sum",
+        fill_value=0,
+    ).reset_index()
+
+    st.dataframe(
+        pivote,
+        use_container_width=True,
+        hide_index=True,
     )
-    .sort_values("CantidadPendiente", ascending=False)
-)
 
-st.dataframe(
-    resumen,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "Cantidad": st.column_config.NumberColumn(format="%.2f"),
-        "CantidadAtendida": st.column_config.NumberColumn(format="%.2f"),
-        "CantidadPendiente": st.column_config.NumberColumn(format="%.2f"),
-    },
-)
-
-# --------------------------------------------------------------------------
-# Exportar Resumen a PDF
-# --------------------------------------------------------------------------
-if not resumen.empty:
+    # Exportar Resumen Diario a PDF
     if isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 2:
         fecha_txt = f"{rango_fechas[0].strftime('%d/%m/%Y')} a {rango_fechas[1].strftime('%d/%m/%Y')}"
     elif isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 1:
@@ -444,14 +457,14 @@ if not resumen.empty:
 
     filtros_str = f"Fecha: {fecha_txt} | De: {de_almacen_sel} | A: {almacen_sel}"
 
-    pdf_bytes = generar_pdf_resumen(resumen, filtros_str)
+    pdf_bytes = generar_pdf_resumen_por_fecha(pivote, filtros_str)
 
     col_pdf, _ = st.columns([1, 3])
     with col_pdf:
         st.download_button(
-            label="📄 Exportar Resumen a PDF",
+            label="📄 Exportar Resumen por Día a PDF",
             data=pdf_bytes,
-            file_name=f"resumen_articulos_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            file_name=f"resumen_diario_articulos_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf",
             use_container_width=True,
         )
