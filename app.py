@@ -45,7 +45,7 @@ st.markdown(
         margin-bottom: 0.1rem;
     }
     .app-header h1 {
-        font-size: 1.65rem;
+        font-size: 2.5rem;
         font-weight: 700;
         color: #1B2B85;
         margin: 0;
