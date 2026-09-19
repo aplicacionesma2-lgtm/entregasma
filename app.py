@@ -1,8 +1,8 @@
 """
-Panel de Registro de Entrega de Productos Terminados
-------------------------------------------------------
-Lee los registros desde Google Sheets y permite exportar un PDF
-con la cantidad total por artículo agrupada por cada día del rango.
+Panel de Registro de Entrega de Productos Terminados & KPIs
+------------------------------------------------------------
+Lee los registros desde Google Sheets, gestiona la exploración de entegas,
+exportación a PDF por fecha y un Dashboard de Indicadores Ejecutivo.
 """
 
 from datetime import datetime
@@ -26,6 +26,10 @@ st.set_page_config(
     layout="wide",
 )
 
+# Inicializar página actual en el estado de la sesión
+if "pagina_actual" not in st.session_state:
+    st.session_state.pagina_actual = "registro"
+
 # --------------------------------------------------------------------------
 # Estilos CSS
 # --------------------------------------------------------------------------
@@ -40,12 +44,12 @@ st.markdown(
 
     .app-header {
         display: flex;
-        align-items: baseline;
-        gap: 0.6rem;
-        margin-bottom: 0.1rem;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
     }
     .app-header h1 {
-        font-size: 2.5rem;
+        font-size: 1.65rem;
         font-weight: 700;
         color: #1B2B85;
         margin: 0;
@@ -85,6 +89,34 @@ st.markdown(
     .metric-qty    { background: #1F7A5C; }
     .metric-pend   { background: #B84A3E; }
 
+    /* Tarjetas KPI Especiales */
+    .kpi-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        text-align: center;
+    }
+    .kpi-title {
+        font-size: 0.85rem;
+        color: #64748B;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .kpi-value-big {
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: #1E293B;
+        margin: 8px 0;
+    }
+    .kpi-sub {
+        font-size: 0.8rem;
+        color: #10B981;
+        font-weight: 600;
+    }
+
     .section-title {
         font-weight: 600;
         font-size: 1.05rem;
@@ -97,11 +129,10 @@ st.markdown(
 )
 
 # --------------------------------------------------------------------------
-# Función PDF con pivote por Fecha (Horizontal / Landscape)
+# Función PDF con pivote por Fecha (Landscape)
 # --------------------------------------------------------------------------
 def generar_pdf_resumen_por_fecha(df_pivote: pd.DataFrame, filtros_info: str) -> BytesIO:
     buffer = BytesIO()
-    # Usamos Landscape (Horizontal) para acomodar múltiples fechas
     doc = SimpleDocTemplate(
         buffer,
         pagesize=landscape(letter),
@@ -137,7 +168,7 @@ def generar_pdf_resumen_por_fecha(df_pivote: pd.DataFrame, filtros_info: str) ->
         fontName='Helvetica-Bold',
         fontSize=7,
         textColor=colors.white,
-        alignment=1, # Centrado
+        alignment=1,
     )
 
     cell_header_left = ParagraphStyle(
@@ -145,7 +176,7 @@ def generar_pdf_resumen_por_fecha(df_pivote: pd.DataFrame, filtros_info: str) ->
         fontName='Helvetica-Bold',
         fontSize=7,
         textColor=colors.white,
-        alignment=0, # Izquierda
+        alignment=0,
     )
 
     cell_body_left = ParagraphStyle(
@@ -166,16 +197,13 @@ def generar_pdf_resumen_por_fecha(df_pivote: pd.DataFrame, filtros_info: str) ->
         alignment=1,
     )
 
-    # Encabezado
     fecha_emision = datetime.now().strftime("%d/%m/%Y %H:%M")
     story.append(Paragraph("Resumen de Entregas por Artículo y Día", title_style))
     story.append(Paragraph(f"Filtros: {filtros_info} | Generado el: {fecha_emision}", subtitle_style))
     story.append(Spacer(1, 4))
 
-    # Construcción de encabezados dinámicos
     columnas = list(df_pivote.columns)
     headers = []
-    
     for col in columnas:
         if col in ["Número de artículo", "Descripción del artículo"]:
             headers.append(Paragraph(col, cell_header_left))
@@ -197,9 +225,8 @@ def generar_pdf_resumen_por_fecha(df_pivote: pd.DataFrame, filtros_info: str) ->
                 fila.append(Paragraph(txt_val, cell_body_center))
         table_data.append(fila)
 
-    # Anchos de columna dinámicos
     num_fechas = len(columnas) - 2
-    ancho_disponible = 26.3 * cm # Ancho imprimible landscape
+    ancho_disponible = 26.3 * cm
     ancho_codigo = 2.8 * cm
     ancho_desc = 7.5 * cm
     
@@ -288,183 +315,311 @@ if df.empty:
     st.warning("No quedaron registros disponibles.")
     st.stop()
 
-# --------------------------------------------------------------------------
-# Encabezado
-# --------------------------------------------------------------------------
-st.markdown(
-    '<div class="app-header">📦<h1>Registro de Entrega de Productos Terminados</h1></div>',
-    unsafe_allow_html=True,
-)
-st.markdown(
-    '<div class="app-subtitle">Filtra por fecha, almacén, orden de fabricación o artículo para visualizar registros.</div>',
-    unsafe_allow_html=True,
-)
+# ==========================================================================
+# BARRA SUPERIOR DE NAVEGACIÓN Y TÍTULO
+# ==========================================================================
+col_header, col_nav = st.columns([3, 1])
 
-# --------------------------------------------------------------------------
-# Filtros Fila 1
-# --------------------------------------------------------------------------
-col1, col2, col3 = st.columns(3)
+with col_header:
+    if st.session_state.pagina_actual == "registro":
+        st.markdown('📦 **Registro de Entrega de Productos Terminados**')
+    else:
+        st.markdown('📊 **Dashboard de Indicadores Clave (KPIs)**')
 
-fechas_validas = df["Fecha de vencimiento"].dropna()
-min_fecha = fechas_validas.min()
-max_fecha = fechas_validas.max()
+with col_nav:
+    if st.session_state.pagina_actual == "registro":
+        if st.button("📊 Ver Indicadores (KPIs)", use_container_width=True, type="primary"):
+            st.session_state.pagina_actual = "kpis"
+            st.rerun()
+    else:
+        if st.button("⬅️ Volver al Registro", use_container_width=True, type="secondary"):
+            st.session_state.pagina_actual = "registro"
+            st.rerun()
 
-with col1:
-    rango_fechas = st.date_input(
-        "Fecha de vencimiento",
-        value=(min_fecha, max_fecha),
-        min_value=min_fecha,
-        max_value=max_fecha,
-        format="DD/MM/YYYY",
+st.divider()
+
+# ==========================================================================
+# VISTA 1: REGISTRO DE ENTREGAS Y TABLAS
+# ==========================================================================
+if st.session_state.pagina_actual == "registro":
+    
+    st.markdown(
+        '<div class="app-subtitle">Filtra por fecha, almacén, orden de fabricación o artículo para visualizar registros.</div>',
+        unsafe_allow_html=True,
     )
 
-if isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 2:
-    f_inicio, f_fin = rango_fechas
-    df_fecha = df[(df["Fecha de vencimiento"] >= f_inicio) & (df["Fecha de vencimiento"] <= f_fin)]
-elif isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 1:
-    df_fecha = df[df["Fecha de vencimiento"] == rango_fechas[0]]
-else:
-    df_fecha = df.copy()
+    # --- Filtros Fila 1 ---
+    col1, col2, col3 = st.columns(3)
 
-with col2:
-    de_almacenes = ["TODOS"] + sorted(df_fecha["De código de almacén"].dropna().unique())
-    de_almacen_sel = st.selectbox("De código de almacén", options=de_almacenes)
+    fechas_validas = df["Fecha de vencimiento"].dropna()
+    min_fecha = fechas_validas.min()
+    max_fecha = fechas_validas.max()
 
-df_de_almacen = df_fecha if de_almacen_sel == "TODOS" else df_fecha[df_fecha["De código de almacén"] == de_almacen_sel]
+    with col1:
+        rango_fechas = st.date_input(
+            "Fecha de vencimiento",
+            value=(min_fecha, max_fecha),
+            min_value=min_fecha,
+            max_value=max_fecha,
+            format="DD/MM/YYYY",
+        )
 
-with col3:
-    almacenes = ["TODOS"] + sorted(df_de_almacen["Código de almacén"].dropna().unique())
-    almacen_sel = st.selectbox("Código de almacén", options=almacenes)
+    if isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 2:
+        f_inicio, f_fin = rango_fechas
+        df_fecha = df[(df["Fecha de vencimiento"] >= f_inicio) & (df["Fecha de vencimiento"] <= f_fin)]
+    elif isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 1:
+        df_fecha = df[df["Fecha de vencimiento"] == rango_fechas[0]]
+    else:
+        df_fecha = df.copy()
 
-df_almacen = df_de_almacen if almacen_sel == "TODOS" else df_de_almacen[df_de_almacen["Código de almacén"] == almacen_sel]
+    with col2:
+        de_almacenes = ["TODOS"] + sorted(df_fecha["De código de almacén"].dropna().unique())
+        de_almacen_sel = st.selectbox("De código de almacén", options=de_almacenes)
 
-# --------------------------------------------------------------------------
-# Filtros Fila 2
-# --------------------------------------------------------------------------
-col4, col5, col6 = st.columns(3)
+    df_de_almacen = df_fecha if de_almacen_sel == "TODOS" else df_fecha[df_fecha["De código de almacén"] == de_almacen_sel]
 
-with col4:
-    doc_sel = st.text_input("Número de documento", value="", placeholder="Ej: 105423")
+    with col3:
+        almacenes = ["TODOS"] + sorted(df_de_almacen["Código de almacén"].dropna().unique())
+        almacen_sel = st.selectbox("Código de almacén", options=almacenes)
 
-with col5:
-    art_sel = st.text_input("Número de artículo", value="", placeholder="Ej: M6020039")
+    df_almacen = df_de_almacen if almacen_sel == "TODOS" else df_de_almacen[df_de_almacen["Código de almacén"] == almacen_sel]
 
-with col6:
-    desc_sel = st.text_input("Descripción del artículo", value="", placeholder="Ej: ALFAJOR")
+    # --- Filtros Fila 2 ---
+    col4, col5, col6 = st.columns(3)
 
-df_sel = df_almacen.copy()
+    with col4:
+        doc_sel = st.text_input("Número de documento", value="", placeholder="Ej: 105423")
 
-if doc_sel.strip():
-    df_sel = df_sel[df_sel["Número de documento"].str.contains(doc_sel.strip(), case=False, na=False)]
+    with col5:
+        art_sel = st.text_input("Número de artículo", value="", placeholder="Ej: M6020039")
 
-if art_sel.strip():
-    df_sel = df_sel[df_sel["Número de artículo"].str.contains(art_sel.strip(), case=False, na=False)]
+    with col6:
+        desc_sel = st.text_input("Descripción del artículo", value="", placeholder="Ej: ALFAJOR")
 
-if desc_sel.strip():
-    df_sel = df_sel[df_sel["Descripción del artículo"].str.contains(desc_sel.strip(), case=False, na=False)]
+    df_sel = df_almacen.copy()
 
-# --------------------------------------------------------------------------
-# Métricas
-# --------------------------------------------------------------------------
-n_documentos = df_sel["Número de documento"].nunique()
-n_articulos = df_sel["Número de artículo"].nunique()
-cantidad_total = df_sel["Cantidad"].sum()
-cantidad_pendiente_total = df_sel["CantidadPendiente"].sum()
+    if doc_sel.strip():
+        df_sel = df_sel[df_sel["Número de documento"].str.contains(doc_sel.strip(), case=False, na=False)]
 
-st.markdown(
-    f"""
-    <div class="metric-row">
-        <div class="metric-card metric-docs">
-            <div class="metric-value">{n_documentos:,}</div>
-            <div class="metric-label">Documentos</div>
+    if art_sel.strip():
+        df_sel = df_sel[df_sel["Número de artículo"].str.contains(art_sel.strip(), case=False, na=False)]
+
+    if desc_sel.strip():
+        df_sel = df_sel[df_sel["Descripción del artículo"].str.contains(desc_sel.strip(), case=False, na=False)]
+
+    # --- Métricas Generales ---
+    n_documentos = df_sel["Número de documento"].nunique()
+    n_articulos = df_sel["Número de artículo"].nunique()
+    cantidad_total = df_sel["Cantidad"].sum()
+    cantidad_pendiente_total = df_sel["CantidadPendiente"].sum()
+
+    st.markdown(
+        f"""
+        <div class="metric-row">
+            <div class="metric-card metric-docs">
+                <div class="metric-value">{n_documentos:,}</div>
+                <div class="metric-label">Documentos</div>
+            </div>
+            <div class="metric-card metric-items">
+                <div class="metric-value">{n_articulos:,}</div>
+                <div class="metric-label">Artículos distintos</div>
+            </div>
+            <div class="metric-card metric-qty">
+                <div class="metric-value">{cantidad_total:,.2f}</div>
+                <div class="metric-label">Cantidad total</div>
+            </div>
+            <div class="metric-card metric-pend">
+                <div class="metric-value">{cantidad_pendiente_total:,.2f}</div>
+                <div class="metric-label">Cantidad pendiente total</div>
+            </div>
         </div>
-        <div class="metric-card metric-items">
-            <div class="metric-value">{n_articulos:,}</div>
-            <div class="metric-label">Artículos distintos</div>
-        </div>
-        <div class="metric-card metric-qty">
-            <div class="metric-value">{cantidad_total:,.2f}</div>
-            <div class="metric-label">Cantidad total</div>
-        </div>
-        <div class="metric-card metric-pend">
-            <div class="metric-value">{cantidad_pendiente_total:,.2f}</div>
-            <div class="metric-label">Cantidad pendiente total</div>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+        """,
+        unsafe_allow_html=True,
+    )
 
-# --------------------------------------------------------------------------
-# Tabla de Detalle
-# --------------------------------------------------------------------------
-st.markdown('<div class="section-title">Detalle</div>', unsafe_allow_html=True)
-
-tabla_cols = [
-    "Número de documento",
-    "Fecha de vencimiento",
-    "Número de artículo",
-    "Descripción del artículo",
-    "Cantidad",
-    "CantidadAtendida",
-    "CantidadPendiente",
-]
-
-st.dataframe(
-    df_sel[tabla_cols].sort_values("Número de documento"),
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "Fecha de vencimiento": st.column_config.DateColumn(format="DD/MM/YYYY"),
-        "Cantidad": st.column_config.NumberColumn(format="%.2f"),
-        "CantidadAtendida": st.column_config.NumberColumn(format="%.2f"),
-        "CantidadPendiente": st.column_config.NumberColumn(format="%.2f"),
-    },
-)
-
-# --------------------------------------------------------------------------
-# Resumen agrupado por Día (Pivote)
-# --------------------------------------------------------------------------
-st.markdown('<div class="section-title">Resumen de Cantidad por Día y Artículo</div>', unsafe_allow_html=True)
-
-if not df_sel.empty:
-    # Formatear la fecha a String DD/MM/YYYY para las columnas del pivote
-    df_piv = df_sel.copy()
-    df_piv["Fecha_Str"] = pd.to_datetime(df_piv["Fecha de vencimiento"]).dt.strftime("%d/%m/%Y")
-
-    pivote = pd.pivot_table(
-        df_piv,
-        values="Cantidad",
-        index=["Número de artículo", "Descripción del artículo"],
-        columns="Fecha_Str",
-        aggfunc="sum",
-        fill_value=0,
-    ).reset_index()
-
+    # --- Detalle ---
+    st.markdown('<div class="section-title">Detalle</div>', unsafe_allow_html=True)
+    tabla_cols = [
+        "Número de documento", "Fecha de vencimiento", "Número de artículo",
+        "Descripción del artículo", "Cantidad", "CantidadAtendida", "CantidadPendiente",
+    ]
     st.dataframe(
-        pivote,
+        df_sel[tabla_cols].sort_values("Número de documento"),
         use_container_width=True,
         hide_index=True,
+        column_config={
+            "Fecha de vencimiento": st.column_config.DateColumn(format="DD/MM/YYYY"),
+            "Cantidad": st.column_config.NumberColumn(format="%.2f"),
+            "CantidadAtendida": st.column_config.NumberColumn(format="%.2f"),
+            "CantidadPendiente": st.column_config.NumberColumn(format="%.2f"),
+        },
     )
 
-    # Exportar Resumen Diario a PDF
-    if isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 2:
-        fecha_txt = f"{rango_fechas[0].strftime('%d/%m/%Y')} a {rango_fechas[1].strftime('%d/%m/%Y')}"
-    elif isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 1:
-        fecha_txt = rango_fechas[0].strftime("%d/%m/%Y")
-    else:
-        fecha_txt = "TODAS"
+    # --- Resumen por Día ---
+    st.markdown('<div class="section-title">Resumen de Cantidad por Día y Artículo</div>', unsafe_allow_html=True)
 
-    filtros_str = f"Fecha: {fecha_txt} | De: {de_almacen_sel} | A: {almacen_sel}"
+    if not df_sel.empty:
+        df_piv = df_sel.copy()
+        df_piv["Fecha_Str"] = pd.to_datetime(df_piv["Fecha de vencimiento"]).dt.strftime("%d/%m/%Y")
 
-    pdf_bytes = generar_pdf_resumen_por_fecha(pivote, filtros_str)
+        pivote = pd.pivot_table(
+            df_piv,
+            values="Cantidad",
+            index=["Número de artículo", "Descripción del artículo"],
+            columns="Fecha_Str",
+            aggfunc="sum",
+            fill_value=0,
+        ).reset_index()
 
-    col_pdf, _ = st.columns([1, 3])
-    with col_pdf:
-        st.download_button(
-            label="📄 Exportar Resumen por Día a PDF",
-            data=pdf_bytes,
-            file_name=f"resumen_diario_articulos_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf",
-            use_container_width=True,
+        st.dataframe(pivote, use_container_width=True, hide_index=True)
+
+        if isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 2:
+            fecha_txt = f"{rango_fechas[0].strftime('%d/%m/%Y')} a {rango_fechas[1].strftime('%d/%m/%Y')}"
+        elif isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 1:
+            fecha_txt = rango_fechas[0].strftime("%d/%m/%Y")
+        else:
+            fecha_txt = "TODAS"
+
+        filtros_str = f"Fecha: {fecha_txt} | De: {de_almacen_sel} | A: {almacen_sel}"
+        pdf_bytes = generar_pdf_resumen_por_fecha(pivote, filtros_str)
+
+        col_pdf, _ = st.columns([1, 3])
+        with col_pdf:
+            st.download_button(
+                label="📄 Exportar Resumen por Día a PDF",
+                data=pdf_bytes,
+                file_name=f"resumen_diario_articulos_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+
+# ==========================================================================
+# VISTA 2: DASHBOARD DE INDICADORES (KPIs)
+# ==========================================================================
+elif st.session_state.pagina_actual == "kpis":
+
+    st.markdown('<div class="app-subtitle">Resumen ejecutivo y comportamiento logístico general.</div>', unsafe_allow_html=True)
+
+    # CÁLCULO DE INDICADORES
+    total_solicitado = df["Cantidad"].sum()
+    total_atendido = df["CantidadAtendida"].sum()
+    total_pendiente = df["CantidadPendiente"].sum()
+
+    # % Nivel de Cumplimiento / OTIF básico
+    pct_cumplimiento = (total_atendido / total_solicitado * 100) if total_solicitado > 0 else 0
+    pct_pendiente = (total_pendiente / total_solicitado * 100) if total_solicitado > 0 else 0
+
+    # TARJETAS DE KPIS PRINCIPALES
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+
+    with kpi1:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Nivel de Atencion</div>
+                <div class="kpi-value-big">{pct_cumplimiento:.1f}%</div>
+                <div class="kpi-sub">🎯 Eficiencia Global</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
+
+    with kpi2:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Saldos Pendientes</div>
+                <div class="kpi-value-big">{pct_pendiente:.1f}%</div>
+                <div class="kpi-sub" style="color: #EF4444;">⚠️ Pendiente de entrega</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with kpi3:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Total Unidades Solicitadas</div>
+                <div class="kpi-value-big">{total_solicitado:,.0f}</div>
+                <div class="kpi-sub" style="color: #3B82F6;">📦 Volumen Total</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with kpi4:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Total Unidades Atendidas</div>
+                <div class="kpi-value-big">{total_atendido:,.0f}</div>
+                <div class="kpi-sub" style="color: #10B981;">✅ Despachado</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+
+    # GRÁFICOS Y ANÁLISIS VISUAL
+    col_chart1, col_chart2 = st.columns(2)
+
+    with col_chart1:
+        st.markdown("### 🏆 Top 10 Productos con Mayor Pendiente")
+        top_pendientes = (
+            df.groupby("Descripción del artículo")["CantidadPendiente"]
+            .sum()
+            .reset_index()
+            .sort_values("CantidadPendiente", ascending=False)
+            .head(10)
+        )
+        st.bar_chart(
+            top_pendientes,
+            x="Descripción del artículo",
+            y="CantidadPendiente",
+            color="#B84A3E",
+        )
+
+    with col_chart2:
+        st.markdown("### 📅 Evolución Diaria de Cantidades")
+        evolucion = (
+            df.groupby("Fecha de vencimiento")[["Cantidad", "CantidadAtendida"]]
+            .sum()
+            .reset_index()
+        )
+        st.line_chart(
+            evolucion,
+            x="Fecha de vencimiento",
+            y=["Cantidad", "CantidadAtendida"],
+        )
+
+    st.markdown("---")
+
+    # SECCIÓN: DISTRIBUCIÓN POR ALMACÉN
+    st.markdown("### 🏬 Resumen por Almacén de Destino")
+    resumen_almacenes = (
+        df.groupby("Código de almacén")
+        .agg(
+            Documentos=("Número de documento", "nunique"),
+            Cantidad_Total=("Cantidad", "sum"),
+            Cantidad_Atendida=("CantidadAtendida", "sum"),
+            Cantidad_Pendiente=("CantidadPendiente", "sum"),
+        )
+        .reset_index()
+    )
+    resumen_almacenes["% Atendido"] = (
+        resumen_almacenes["Cantidad_Atendida"] / resumen_almacenes["Cantidad_Total"] * 100
+    ).round(1)
+
+    st.dataframe(
+        resumen_almacenes,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Cantidad_Total": st.column_config.NumberColumn(format="%.2f"),
+            "Cantidad_Atendida": st.column_config.NumberColumn(format="%.2f"),
+            "Cantidad_Pendiente": st.column_config.NumberColumn(format="%.2f"),
+            "% Atendido": st.column_config.NumberColumn(format="%.1f %%"),
+        },
+    )
