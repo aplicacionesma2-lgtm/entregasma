@@ -328,7 +328,7 @@ with col_header:
         )
     else:
         st.markdown(
-            '<h1 style="font-size: 24px; color: #1B2B85; font-weight: 700; margin: 0;">📊 Dashboard de Indicadores Operativos (KPIs)</h1>',
+            '<h1 style="font-size: 32px; color: #1B2B85; font-weight: 700; margin: 0;">📊 Dashboard de Indicadores Operativos (KPIs)</h1>',
             unsafe_allow_html=True
         )
 
