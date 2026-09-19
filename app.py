@@ -322,9 +322,10 @@ col_header, col_nav = st.columns([3, 1])
 
 with col_header:
     if st.session_state.pagina_actual == "registro":
-        st.markdown('📦 **Registro de Entrega de Productos Terminados**')
-    else:
-        st.markdown('📊 **Dashboard de Indicadores Operativos (KPIs)**')
+        st.markdown(
+            '<h1 style="font-size: 24px; color: #1B2B85; font-weight: 700; margin: 0;">📦 Registro de Entrega de Productos Terminados</h1>',
+            unsafe_allow_html=True
+        )
 
 with col_nav:
     if st.session_state.pagina_actual == "registro":
