@@ -491,13 +491,13 @@ if st.session_state.pagina_actual == "registro":
             )
 
 # ==========================================================================
-# VISTA 2: DASHBOARD DE INDICADORES CON FILTROS Y DETALLE DE PRODUCTOS
+# VISTA 2: DASHBOARD DE INDICADORES CON FILTROS EXTENDIDOS
 # ==========================================================================
 elif st.session_state.pagina_actual == "kpis":
 
-    st.markdown('<div class="app-subtitle">Selecciona el rango de fechas y almacenes para consultar los indicadores de flujo.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="app-subtitle">Selecciona el rango de fechas, almacenes y artículo para consultar los indicadores.</div>', unsafe_allow_html=True)
 
-    # FILTROS EXCLUSIVOS PARA KPIS
+    # FILTROS DE KPIS - FILA 1 (Fechas y Almacenes)
     ck1, ck2, ck3 = st.columns(3)
 
     fechas_validas_kpi = df["Fecha de vencimiento"].dropna()
@@ -535,10 +535,25 @@ elif st.session_state.pagina_actual == "kpis":
     if a_alm_kpi:
         df_kpi = df_kpi[df_kpi["Código de almacén"].isin(a_alm_kpi)]
 
+    # FILTROS DE KPIS - FILA 2 (Artículo y Descripción)
+    ck4, ck5 = st.columns(2)
+
+    with ck4:
+        art_kpi = st.text_input("Código de artículo (KPIs)", value="", placeholder="Ej: M6020039", key="kpi_art")
+
+    with ck5:
+        desc_kpi = st.text_input("Descripción del artículo (KPIs)", value="", placeholder="Ej: ALFAJOR", key="kpi_desc")
+
+    if art_kpi.strip():
+        df_kpi = df_kpi[df_kpi["Número de artículo"].str.contains(art_kpi.strip(), case=False, na=False)]
+
+    if desc_kpi.strip():
+        df_kpi = df_kpi[df_kpi["Descripción del artículo"].str.contains(desc_kpi.strip(), case=False, na=False)]
+
     st.markdown("---")
 
     if df_kpi.empty:
-        st.warning("No hay registros para los almacenes y fechas seleccionadas.")
+        st.warning("No hay registros para los filtros seleccionados.")
     else:
         # CÁLCULOS
         total_unidades = df_kpi["Cantidad"].sum()
