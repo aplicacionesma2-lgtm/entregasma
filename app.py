@@ -1,7 +1,7 @@
 """
 Panel de Registro de Entrega de Productos Terminados & KPIs
 ------------------------------------------------------------
-Lee los registros desde Google Sheets, gestiona la exploración de entegas,
+Lee los registros desde Google Sheets, gestiona la exploración de entregas,
 exportación a PDF por fecha y un Dashboard de Indicadores Ejecutivo.
 """
 
@@ -49,7 +49,7 @@ st.markdown(
         margin-bottom: 0.5rem;
     }
     .app-header h1 {
-        font-size: 2rem;
+        font-size: 1.65rem;
         font-weight: 700;
         color: #1B2B85;
         margin: 0;
@@ -99,21 +99,21 @@ st.markdown(
         text-align: center;
     }
     .kpi-title {
-        font-size: 0.85rem;
+        font-size: 0.82rem;
         color: #64748B;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
     .kpi-value-big {
-        font-size: 2.2rem;
+        font-size: 2.1rem;
         font-weight: 700;
         color: #1E293B;
         margin: 8px 0;
     }
     .kpi-sub {
         font-size: 0.8rem;
-        color: #10B981;
+        color: #3B82F6;
         font-weight: 600;
     }
 
@@ -324,7 +324,7 @@ with col_header:
     if st.session_state.pagina_actual == "registro":
         st.markdown('📦 **Registro de Entrega de Productos Terminados**')
     else:
-        st.markdown('📊 **Dashboard de Indicadores Clave (KPIs)**')
+        st.markdown('📊 **Dashboard de Indicadores Operativos (KPIs)**')
 
 with col_nav:
     if st.session_state.pagina_actual == "registro":
@@ -494,20 +494,20 @@ if st.session_state.pagina_actual == "registro":
             )
 
 # ==========================================================================
-# VISTA 2: DASHBOARD DE INDICADORES (KPIs)
+# VISTA 2: DASHBOARD DE INDICADORES (OPERATIVO/VOLUMEN)
 # ==========================================================================
 elif st.session_state.pagina_actual == "kpis":
 
-    st.markdown('<div class="app-subtitle">Resumen ejecutivo y comportamiento logístico general.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="app-subtitle">Análisis del flujo de mercancía, volumen programado y concentración de inventario.</div>', unsafe_allow_html=True)
 
-    # CÁLCULO DE INDICADORES
-    total_solicitado = df["Cantidad"].sum()
-    total_atendido = df["CantidadAtendida"].sum()
-    total_pendiente = df["CantidadPendiente"].sum()
+    # CÁLCULOS
+    total_unidades = df["Cantidad"].sum()
+    total_docs = df["Número de documento"].nunique()
+    total_sku = df["Número de artículo"].nunique()
+    total_dias_actividad = df["Fecha de vencimiento"].nunique()
 
-    # % Nivel de Cumplimiento / OTIF básico
-    pct_cumplimiento = (total_atendido / total_solicitado * 100) if total_solicitado > 0 else 0
-    pct_pendiente = (total_pendiente / total_solicitado * 100) if total_solicitado > 0 else 0
+    promedio_unidades_doc = total_unidades / total_docs if total_docs > 0 else 0
+    promedio_diario = total_unidades / total_dias_actividad if total_dias_actividad > 0 else 0
 
     # TARJETAS DE KPIS PRINCIPALES
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -516,9 +516,9 @@ elif st.session_state.pagina_actual == "kpis":
         st.markdown(
             f"""
             <div class="kpi-card">
-                <div class="kpi-title">Nivel de Atencion</div>
-                <div class="kpi-value-big">{pct_cumplimiento:.1f}%</div>
-                <div class="kpi-sub">🎯 Eficiencia Global</div>
+                <div class="kpi-title">Promedio Unidades / Documento</div>
+                <div class="kpi-value-big">{promedio_unidades_doc:,.1f}</div>
+                <div class="kpi-sub">📦 Tamaño Promedio de Orden</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -528,9 +528,9 @@ elif st.session_state.pagina_actual == "kpis":
         st.markdown(
             f"""
             <div class="kpi-card">
-                <div class="kpi-title">Saldos Pendientes</div>
-                <div class="kpi-value-big">{pct_pendiente:.1f}%</div>
-                <div class="kpi-sub" style="color: #EF4444;">⚠️ Pendiente de entrega</div>
+                <div class="kpi-title">Promedio Unidades / Día</div>
+                <div class="kpi-value-big">{promedio_diario:,.0f}</div>
+                <div class="kpi-sub" style="color: #2563EB;">📅 Ritmo de Entrega Diario</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -540,9 +540,9 @@ elif st.session_state.pagina_actual == "kpis":
         st.markdown(
             f"""
             <div class="kpi-card">
-                <div class="kpi-title">Total Unidades Solicitadas</div>
-                <div class="kpi-value-big">{total_solicitado:,.0f}</div>
-                <div class="kpi-sub" style="color: #3B82F6;">📦 Volumen Total</div>
+                <div class="kpi-title">Variedad de Productos (SKUs)</div>
+                <div class="kpi-value-big">{total_sku:,}</div>
+                <div class="kpi-sub" style="color: #D97706;">🏷️ Catálogo Solicitado</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -552,9 +552,9 @@ elif st.session_state.pagina_actual == "kpis":
         st.markdown(
             f"""
             <div class="kpi-card">
-                <div class="kpi-title">Total Unidades Atendidas</div>
-                <div class="kpi-value-big">{total_atendido:,.0f}</div>
-                <div class="kpi-sub" style="color: #10B981;">✅ Despachado</div>
+                <div class="kpi-title">Días Operativos con Entrega</div>
+                <div class="kpi-value-big">{total_dias_actividad}</div>
+                <div class="kpi-sub" style="color: #059669;">🗓️ Cobertura de Calendario</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -562,64 +562,88 @@ elif st.session_state.pagina_actual == "kpis":
 
     st.markdown("---")
 
-    # GRÁFICOS Y ANÁLISIS VISUAL
+    # GRÁFICOS
     col_chart1, col_chart2 = st.columns(2)
 
     with col_chart1:
-        st.markdown("### 🏆 Top 10 Productos con Mayor Pendiente")
-        top_pendientes = (
-            df.groupby("Descripción del artículo")["CantidadPendiente"]
+        st.markdown("### 🏆 Top 10 Productos por Volumen Total")
+        top_productos = (
+            df.groupby("Descripción del artículo")["Cantidad"]
             .sum()
             .reset_index()
-            .sort_values("CantidadPendiente", ascending=False)
+            .sort_values("Cantidad", ascending=False)
             .head(10)
         )
         st.bar_chart(
-            top_pendientes,
+            top_productos,
             x="Descripción del artículo",
-            y="CantidadPendiente",
-            color="#B84A3E",
+            y="Cantidad",
+            color="#1B2B85",
         )
 
     with col_chart2:
-        st.markdown("### 📅 Evolución Diaria de Cantidades")
-        evolucion = (
-            df.groupby("Fecha de vencimiento")[["Cantidad", "CantidadAtendida"]]
+        st.markdown("### 📅 Comportamiento Diario de Volumen")
+        evolucion_volumen = (
+            df.groupby("Fecha de vencimiento")["Cantidad"]
             .sum()
             .reset_index()
         )
         st.line_chart(
-            evolucion,
+            evolucion_volumen,
             x="Fecha de vencimiento",
-            y=["Cantidad", "CantidadAtendida"],
+            y="Cantidad",
+            color="#2C5F7C",
         )
 
     st.markdown("---")
 
-    # SECCIÓN: DISTRIBUCIÓN POR ALMACÉN
-    st.markdown("### 🏬 Resumen por Almacén de Destino")
-    resumen_almacenes = (
-        df.groupby("Código de almacén")
-        .agg(
-            Documentos=("Número de documento", "nunique"),
-            Cantidad_Total=("Cantidad", "sum"),
-            Cantidad_Atendida=("CantidadAtendida", "sum"),
-            Cantidad_Pendiente=("CantidadPendiente", "sum"),
-        )
-        .reset_index()
-    )
-    resumen_almacenes["% Atendido"] = (
-        resumen_almacenes["Cantidad_Atendida"] / resumen_almacenes["Cantidad_Total"] * 100
-    ).round(1)
+    # TABLA DE CONCENTRACIÓN Y DISTRIBUCIÓN POR ALMACÉN DE DESTINO
+    col_t1, col_t2 = st.columns(2)
 
-    st.dataframe(
-        resumen_almacenes,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Cantidad_Total": st.column_config.NumberColumn(format="%.2f"),
-            "Cantidad_Atendida": st.column_config.NumberColumn(format="%.2f"),
-            "Cantidad_Pendiente": st.column_config.NumberColumn(format="%.2f"),
-            "% Atendido": st.column_config.NumberColumn(format="%.1f %%"),
-        },
-    )
+    with col_t1:
+        st.markdown("### 🏭 Distribución por Almacén Origen")
+        resumen_de_almacen = (
+            df.groupby("De código de almacén")
+            .agg(
+                Documentos=("Número de documento", "nunique"),
+                Cantidad_Total=("Cantidad", "sum"),
+            )
+            .reset_index()
+        )
+        resumen_de_almacen["% Participación"] = (
+            resumen_de_almacen["Cantidad_Total"] / total_unidades * 100
+        ).round(1)
+
+        st.dataframe(
+            resumen_de_almacen.sort_values("Cantidad_Total", ascending=False),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Cantidad_Total": st.column_config.NumberColumn(format="%.2f"),
+                "% Participación": st.column_config.NumberColumn(format="%.1f %%"),
+            },
+        )
+
+    with col_t2:
+        st.markdown("### 🏬 Distribución por Almacén Destino")
+        resumen_almacen = (
+            df.groupby("Código de almacén")
+            .agg(
+                Documentos=("Número de documento", "nunique"),
+                Cantidad_Total=("Cantidad", "sum"),
+            )
+            .reset_index()
+        )
+        resumen_almacen["% Participación"] = (
+            resumen_almacen["Cantidad_Total"] / total_unidades * 100
+        ).round(1)
+
+        st.dataframe(
+            resumen_almacen.sort_values("Cantidad_Total", ascending=False),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Cantidad_Total": st.column_config.NumberColumn(format="%.2f"),
+                "% Participación": st.column_config.NumberColumn(format="%.1f %%"),
+            },
+        )
