@@ -348,7 +348,6 @@ if st.session_state.pagina_actual == "registro":
         unsafe_allow_html=True,
     )
 
-    # --- Filtros Fila 1 ---
     col1, col2, col3 = st.columns(3)
 
     fechas_validas = df["Fecha de vencimiento"].dropna()
@@ -362,6 +361,7 @@ if st.session_state.pagina_actual == "registro":
             min_value=min_fecha,
             max_value=max_fecha,
             format="DD/MM/YYYY",
+            key="reg_fechas"
         )
 
     if isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 2:
@@ -374,17 +374,16 @@ if st.session_state.pagina_actual == "registro":
 
     with col2:
         de_almacenes = ["TODOS"] + sorted(df_fecha["De código de almacén"].dropna().unique())
-        de_almacen_sel = st.selectbox("De código de almacén", options=de_almacenes)
+        de_almacen_sel = st.selectbox("De código de almacén", options=de_almacenes, key="reg_de_alm")
 
     df_de_almacen = df_fecha if de_almacen_sel == "TODOS" else df_fecha[df_fecha["De código de almacén"] == de_almacen_sel]
 
     with col3:
         almacenes = ["TODOS"] + sorted(df_de_almacen["Código de almacén"].dropna().unique())
-        almacen_sel = st.selectbox("Código de almacén", options=almacenes)
+        almacen_sel = st.selectbox("Código de almacén", options=almacenes, key="reg_a_alm")
 
     df_almacen = df_de_almacen if almacen_sel == "TODOS" else df_de_almacen[df_de_almacen["Código de almacén"] == almacen_sel]
 
-    # --- Filtros Fila 2 ---
     col4, col5, col6 = st.columns(3)
 
     with col4:
@@ -407,7 +406,6 @@ if st.session_state.pagina_actual == "registro":
     if desc_sel.strip():
         df_sel = df_sel[df_sel["Descripción del artículo"].str.contains(desc_sel.strip(), case=False, na=False)]
 
-    # --- Métricas Generales ---
     n_documentos = df_sel["Número de documento"].nunique()
     n_articulos = df_sel["Número de artículo"].nunique()
     cantidad_total = df_sel["Cantidad"].sum()
@@ -437,7 +435,6 @@ if st.session_state.pagina_actual == "registro":
         unsafe_allow_html=True,
     )
 
-    # --- Detalle ---
     st.markdown('<div class="section-title">Detalle</div>', unsafe_allow_html=True)
     tabla_cols = [
         "Número de documento", "Fecha de vencimiento", "Número de artículo",
@@ -455,7 +452,6 @@ if st.session_state.pagina_actual == "registro":
         },
     )
 
-    # --- Resumen por Día ---
     st.markdown('<div class="section-title">Resumen de Cantidad por Día y Artículo</div>', unsafe_allow_html=True)
 
     if not df_sel.empty:
@@ -494,156 +490,199 @@ if st.session_state.pagina_actual == "registro":
             )
 
 # ==========================================================================
-# VISTA 2: DASHBOARD DE INDICADORES (OPERATIVO/VOLUMEN)
+# VISTA 2: DASHBOARD DE INDICADORES CON FILTROS DE ALMACÉN Y FECHAS
 # ==========================================================================
 elif st.session_state.pagina_actual == "kpis":
 
-    st.markdown('<div class="app-subtitle">Análisis del flujo de mercancía, volumen programado y concentración de inventario.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="app-subtitle">Selecciona el rango de fechas y almacenes para consultar los indicadores de flujo.</div>', unsafe_allow_html=True)
 
-    # CÁLCULOS
-    total_unidades = df["Cantidad"].sum()
-    total_docs = df["Número de documento"].nunique()
-    total_sku = df["Número de artículo"].nunique()
-    total_dias_actividad = df["Fecha de vencimiento"].nunique()
+    # FILTROS EXCLUSIVOS PARA KPIS
+    ck1, ck2, ck3 = st.columns(3)
 
-    promedio_unidades_doc = total_unidades / total_docs if total_docs > 0 else 0
-    promedio_diario = total_unidades / total_dias_actividad if total_dias_actividad > 0 else 0
+    fechas_validas_kpi = df["Fecha de vencimiento"].dropna()
+    min_fecha_k = fechas_validas_kpi.min()
+    max_fecha_k = fechas_validas_kpi.max()
 
-    # TARJETAS DE KPIS PRINCIPALES
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-
-    with kpi1:
-        st.markdown(
-            f"""
-            <div class="kpi-card">
-                <div class="kpi-title">Promedio Unidades / Documento</div>
-                <div class="kpi-value-big">{promedio_unidades_doc:,.1f}</div>
-                <div class="kpi-sub">📦 Tamaño Promedio de Orden</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    with ck1:
+        rango_kpi = st.date_input(
+            "Rango de Fechas (KPIs)",
+            value=(min_fecha_k, max_fecha_k),
+            min_value=min_fecha_k,
+            max_value=max_fecha_k,
+            format="DD/MM/YYYY",
+            key="kpi_fechas"
         )
 
-    with kpi2:
-        st.markdown(
-            f"""
-            <div class="kpi-card">
-                <div class="kpi-title">Promedio Unidades / Día</div>
-                <div class="kpi-value-big">{promedio_diario:,.0f}</div>
-                <div class="kpi-sub" style="color: #2563EB;">📅 Ritmo de Entrega Diario</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    if isinstance(rango_kpi, (tuple, list)) and len(rango_kpi) == 2:
+        df_kpi = df[(df["Fecha de vencimiento"] >= rango_kpi[0]) & (df["Fecha de vencimiento"] <= rango_kpi[1])]
+    elif isinstance(rango_kpi, (tuple, list)) and len(rango_kpi) == 1:
+        df_kpi = df[df["Fecha de vencimiento"] == rango_kpi[0]]
+    else:
+        df_kpi = df.copy()
 
-    with kpi3:
-        st.markdown(
-            f"""
-            <div class="kpi-card">
-                <div class="kpi-title">Variedad de Productos (SKUs)</div>
-                <div class="kpi-value-big">{total_sku:,}</div>
-                <div class="kpi-sub" style="color: #D97706;">🏷️ Catálogo Solicitado</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    with ck2:
+        de_almacenes_k = ["TODOS"] + sorted(df_kpi["De código de almacén"].dropna().unique())
+        de_alm_kpi = st.selectbox("De código de almacén (Origen)", options=de_almacenes_k, key="kpi_de_alm")
 
-    with kpi4:
-        st.markdown(
-            f"""
-            <div class="kpi-card">
-                <div class="kpi-title">Días Operativos con Entrega</div>
-                <div class="kpi-value-big">{total_dias_actividad}</div>
-                <div class="kpi-sub" style="color: #059669;">🗓️ Cobertura de Calendario</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    if de_alm_kpi != "TODOS":
+        df_kpi = df_kpi[df_kpi["De código de almacén"] == de_alm_kpi]
+
+    with ck3:
+        almacenes_k = ["TODOS"] + sorted(df_kpi["Código de almacén"].dropna().unique())
+        a_alm_kpi = st.selectbox("Código de almacén (Destino)", options=almacenes_k, key="kpi_a_alm")
+
+    if a_alm_kpi != "TODOS":
+        df_kpi = df_kpi[df_kpi["Código de almacén"] == a_alm_kpi]
 
     st.markdown("---")
 
-    # GRÁFICOS
-    col_chart1, col_chart2 = st.columns(2)
+    if df_kpi.empty:
+        st.warning("No hay registros para los almacenes y fechas seleccionadas.")
+    else:
+        # CÁLCULOS
+        total_unidades = df_kpi["Cantidad"].sum()
+        total_docs = df_kpi["Número de documento"].nunique()
+        total_sku = df_kpi["Número de artículo"].nunique()
+        total_dias_actividad = df_kpi["Fecha de vencimiento"].nunique()
 
-    with col_chart1:
-        st.markdown("### 🏆 Top 10 Productos por Volumen Total")
-        top_productos = (
-            df.groupby("Descripción del artículo")["Cantidad"]
-            .sum()
-            .reset_index()
-            .sort_values("Cantidad", ascending=False)
-            .head(10)
-        )
-        st.bar_chart(
-            top_productos,
-            x="Descripción del artículo",
-            y="Cantidad",
-            color="#1B2B85",
-        )
+        promedio_unidades_doc = total_unidades / total_docs if total_docs > 0 else 0
+        promedio_diario = total_unidades / total_dias_actividad if total_dias_actividad > 0 else 0
 
-    with col_chart2:
-        st.markdown("### 📅 Comportamiento Diario de Volumen")
-        evolucion_volumen = (
-            df.groupby("Fecha de vencimiento")["Cantidad"]
-            .sum()
-            .reset_index()
-        )
-        st.line_chart(
-            evolucion_volumen,
-            x="Fecha de vencimiento",
-            y="Cantidad",
-            color="#2C5F7C",
-        )
+        # TARJETAS DE KPIS PRINCIPALES
+        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
-    st.markdown("---")
-
-    # TABLA DE CONCENTRACIÓN Y DISTRIBUCIÓN POR ALMACÉN DE DESTINO
-    col_t1, col_t2 = st.columns(2)
-
-    with col_t1:
-        st.markdown("### 🏭 Distribución por Almacén Origen")
-        resumen_de_almacen = (
-            df.groupby("De código de almacén")
-            .agg(
-                Documentos=("Número de documento", "nunique"),
-                Cantidad_Total=("Cantidad", "sum"),
+        with kpi1:
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-title">Promedio Unidades / Documento</div>
+                    <div class="kpi-value-big">{promedio_unidades_doc:,.1f}</div>
+                    <div class="kpi-sub">📦 Tamaño Promedio de Orden</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-            .reset_index()
-        )
-        resumen_de_almacen["% Participación"] = (
-            resumen_de_almacen["Cantidad_Total"] / total_unidades * 100
-        ).round(1)
 
-        st.dataframe(
-            resumen_de_almacen.sort_values("Cantidad_Total", ascending=False),
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Cantidad_Total": st.column_config.NumberColumn(format="%.2f"),
-                "% Participación": st.column_config.NumberColumn(format="%.1f %%"),
-            },
-        )
-
-    with col_t2:
-        st.markdown("### 🏬 Distribución por Almacén Destino")
-        resumen_almacen = (
-            df.groupby("Código de almacén")
-            .agg(
-                Documentos=("Número de documento", "nunique"),
-                Cantidad_Total=("Cantidad", "sum"),
+        with kpi2:
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-title">Promedio Unidades / Día</div>
+                    <div class="kpi-value-big">{promedio_diario:,.0f}</div>
+                    <div class="kpi-sub" style="color: #2563EB;">📅 Ritmo de Entrega Diario</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-            .reset_index()
-        )
-        resumen_almacen["% Participación"] = (
-            resumen_almacen["Cantidad_Total"] / total_unidades * 100
-        ).round(1)
 
-        st.dataframe(
-            resumen_almacen.sort_values("Cantidad_Total", ascending=False),
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Cantidad_Total": st.column_config.NumberColumn(format="%.2f"),
-                "% Participación": st.column_config.NumberColumn(format="%.1f %%"),
-            },
-        )
+        with kpi3:
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-title">Variedad de Productos (SKUs)</div>
+                    <div class="kpi-value-big">{total_sku:,}</div>
+                    <div class="kpi-sub" style="color: #D97706;">🏷️ Catálogo Solicitado</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with kpi4:
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-title">Días Operativos con Entrega</div>
+                    <div class="kpi-value-big">{total_dias_actividad}</div>
+                    <div class="kpi-sub" style="color: #059669;">🗓️ Cobertura de Calendario</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("---")
+
+        # GRÁFICOS
+        col_chart1, col_chart2 = st.columns(2)
+
+        with col_chart1:
+            st.markdown("### 🏆 Top 10 Productos por Volumen Total")
+            top_productos = (
+                df_kpi.groupby("Descripción del artículo")["Cantidad"]
+                .sum()
+                .reset_index()
+                .sort_values("Cantidad", ascending=False)
+                .head(10)
+            )
+            st.bar_chart(
+                top_productos,
+                x="Descripción del artículo",
+                y="Cantidad",
+                color="#1B2B85",
+            )
+
+        with col_chart2:
+            st.markdown("### 📅 Comportamiento Diario de Volumen")
+            evolucion_volumen = (
+                df_kpi.groupby("Fecha de vencimiento")["Cantidad"]
+                .sum()
+                .reset_index()
+            )
+            st.line_chart(
+                evolucion_volumen,
+                x="Fecha de vencimiento",
+                y="Cantidad",
+                color="#2C5F7C",
+            )
+
+        st.markdown("---")
+
+        # TABLAS DE DISTRIBUCIÓN
+        col_t1, col_t2 = st.columns(2)
+
+        with col_t1:
+            st.markdown("### 🏭 Distribución por Almacén Origen")
+            resumen_de_almacen = (
+                df_kpi.groupby("De código de almacén")
+                .agg(
+                    Documentos=("Número de documento", "nunique"),
+                    Cantidad_Total=("Cantidad", "sum"),
+                )
+                .reset_index()
+            )
+            resumen_de_almacen["% Participación"] = (
+                resumen_de_almacen["Cantidad_Total"] / total_unidades * 100
+            ).round(1)
+
+            st.dataframe(
+                resumen_de_almacen.sort_values("Cantidad_Total", ascending=False),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Cantidad_Total": st.column_config.NumberColumn(format="%.2f"),
+                    "% Participación": st.column_config.NumberColumn(format="%.1f %%"),
+                },
+            )
+
+        with col_t2:
+            st.markdown("### 🏬 Distribución por Almacén Destino")
+            resumen_almacen = (
+                df_kpi.groupby("Código de almacén")
+                .agg(
+                    Documentos=("Número de documento", "nunique"),
+                    Cantidad_Total=("Cantidad", "sum"),
+                )
+                .reset_index()
+            )
+            resumen_almacen["% Participación"] = (
+                resumen_almacen["Cantidad_Total"] / total_unidades * 100
+            ).round(1)
+
+            st.dataframe(
+                resumen_almacen.sort_values("Cantidad_Total", ascending=False),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Cantidad_Total": st.column_config.NumberColumn(format="%.2f"),
+                    "% Participación": st.column_config.NumberColumn(format="%.1f %%"),
+                },
+            )
