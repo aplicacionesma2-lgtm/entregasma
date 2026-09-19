@@ -11,7 +11,7 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, landscape
+from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -379,10 +379,10 @@ if st.session_state.pagina_actual == "registro":
     df_de_almacen = df_fecha if de_almacen_sel == "TODOS" else df_fecha[df_fecha["De código de almacén"] == de_almacen_sel]
 
     with col3:
-        almacenes = ["TODOS"] + sorted(df_de_almacen["Código de almacén"].dropna().unique())
-        almacen_sel = st.selectbox("Código de almacén", options=almacenes, key="reg_a_alm")
+        almacenes = sorted(df_de_almacen["Código de almacén"].dropna().unique())
+        almacenes_sel = st.multiselect("Código de almacén (Destino)", options=almacenes, default=[], key="reg_a_alm")
 
-    df_almacen = df_de_almacen if almacen_sel == "TODOS" else df_de_almacen[df_de_almacen["Código de almacén"] == almacen_sel]
+    df_almacen = df_de_almacen if not almacenes_sel else df_de_almacen[df_de_almacen["Código de almacén"].isin(almacenes_sel)]
 
     col4, col5, col6 = st.columns(3)
 
@@ -476,7 +476,8 @@ if st.session_state.pagina_actual == "registro":
         else:
             fecha_txt = "TODAS"
 
-        filtros_str = f"Fecha: {fecha_txt} | De: {de_almacen_sel} | A: {almacen_sel}"
+        txt_destinos = ", ".join(almacenes_sel) if almacenes_sel else "TODOS"
+        filtros_str = f"Fecha: {fecha_txt} | De: {de_almacen_sel} | A: {txt_destinos}"
         pdf_bytes = generar_pdf_resumen_por_fecha(pivote, filtros_str)
 
         col_pdf, _ = st.columns([1, 3])
@@ -490,7 +491,7 @@ if st.session_state.pagina_actual == "registro":
             )
 
 # ==========================================================================
-# VISTA 2: DASHBOARD DE INDICADORES CON FILTROS DE ALMACÉN Y FECHAS
+# VISTA 2: DASHBOARD DE INDICADORES CON FILTROS Y DETALLE DE PRODUCTOS
 # ==========================================================================
 elif st.session_state.pagina_actual == "kpis":
 
@@ -528,11 +529,11 @@ elif st.session_state.pagina_actual == "kpis":
         df_kpi = df_kpi[df_kpi["De código de almacén"] == de_alm_kpi]
 
     with ck3:
-        almacenes_k = ["TODOS"] + sorted(df_kpi["Código de almacén"].dropna().unique())
-        a_alm_kpi = st.selectbox("Código de almacén (Destino)", options=almacenes_k, key="kpi_a_alm")
+        almacenes_k = sorted(df_kpi["Código de almacén"].dropna().unique())
+        a_alm_kpi = st.multiselect("Código de almacén (Destino)", options=almacenes_k, default=[], key="kpi_a_alm")
 
-    if a_alm_kpi != "TODOS":
-        df_kpi = df_kpi[df_kpi["Código de almacén"] == a_alm_kpi]
+    if a_alm_kpi:
+        df_kpi = df_kpi[df_kpi["Código de almacén"].isin(a_alm_kpi)]
 
     st.markdown("---")
 
@@ -636,53 +637,32 @@ elif st.session_state.pagina_actual == "kpis":
 
         st.markdown("---")
 
-        # TABLAS DE DISTRIBUCIÓN
-        col_t1, col_t2 = st.columns(2)
-
-        with col_t1:
-            st.markdown("### 🏭 Distribución por Almacén Origen")
-            resumen_de_almacen = (
-                df_kpi.groupby("De código de almacén")
-                .agg(
-                    Documentos=("Número de documento", "nunique"),
-                    Cantidad_Total=("Cantidad", "sum"),
-                )
-                .reset_index()
+        # DETALLE DE PRODUCTOS ENTREGADOS (DE MAYOR A MENOR)
+        st.markdown("### 📋 Detalle Completo de Productos Entregados (Mayor a Menor)")
+        
+        detalle_productos = (
+            df_kpi.groupby(["Número de artículo", "Descripción del artículo"])
+            .agg(
+                Cantidad_Entregada=("Cantidad", "sum"),
+                Documentos_Asociados=("Número de documento", "nunique")
             )
-            resumen_de_almacen["% Participación"] = (
-                resumen_de_almacen["Cantidad_Total"] / total_unidades * 100
-            ).round(1)
+            .reset_index()
+            .sort_values("Cantidad_Entregada", ascending=False)
+        )
 
-            st.dataframe(
-                resumen_de_almacen.sort_values("Cantidad_Total", ascending=False),
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Cantidad_Total": st.column_config.NumberColumn(format="%.2f"),
-                    "% Participación": st.column_config.NumberColumn(format="%.1f %%"),
-                },
-            )
+        detalle_productos["% Participación"] = (
+            detalle_productos["Cantidad_Entregada"] / total_unidades * 100
+        ).round(2)
 
-        with col_t2:
-            st.markdown("### 🏬 Distribución por Almacén Destino")
-            resumen_almacen = (
-                df_kpi.groupby("Código de almacén")
-                .agg(
-                    Documentos=("Número de documento", "nunique"),
-                    Cantidad_Total=("Cantidad", "sum"),
-                )
-                .reset_index()
-            )
-            resumen_almacen["% Participación"] = (
-                resumen_almacen["Cantidad_Total"] / total_unidades * 100
-            ).round(1)
-
-            st.dataframe(
-                resumen_almacen.sort_values("Cantidad_Total", ascending=False),
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Cantidad_Total": st.column_config.NumberColumn(format="%.2f"),
-                    "% Participación": st.column_config.NumberColumn(format="%.1f %%"),
-                },
-            )
+        st.dataframe(
+            detalle_productos,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Número de artículo": st.column_config.TextColumn("Código Artículo"),
+                "Descripción del artículo": st.column_config.TextColumn("Descripción"),
+                "Cantidad_Entregada": st.column_config.NumberColumn("Cantidad Total", format="%.2f"),
+                "Documentos_Asociados": st.column_config.NumberColumn("Total Docs", format="%d"),
+                "% Participación": st.column_config.NumberColumn("% del Total", format="%.2f %%"),
+            },
+        )
