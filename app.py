@@ -562,14 +562,13 @@ elif st.session_state.pagina_actual == "kpis":
         st.warning("No hay registros para los filtros seleccionados.")
     else:
         # CÁLCULOS
-        total_unidades = df_kpi["Cantidad"].sum()
         total_docs = df_kpi["Número de documento"].nunique()
         total_dias_actividad = df_kpi["Fecha de vencimiento"].nunique()
         total_sku = df_kpi["Número de artículo"].nunique()
 
-        # Promedios por volumen de productos (unidades físicas)
-        prom_prod_por_doc = total_unidades / total_docs if total_docs > 0 else 0
-        prom_prod_por_dia = total_unidades / total_dias_actividad if total_dias_actividad > 0 else 0
+        # Promedio de ÍTEMS/LÍNEAS distitnas por documento y por día
+        prom_prod_por_doc = df_kpi.groupby("Número de documento")["Número de artículo"].nunique().mean() if total_docs > 0 else 0
+        prom_prod_por_dia = df_kpi.groupby("Fecha de vencimiento")["Número de artículo"].nunique().mean() if total_dias_actividad > 0 else 0
 
         # TARJETAS DE KPIS PRINCIPALES
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -579,8 +578,8 @@ elif st.session_state.pagina_actual == "kpis":
                 f"""
                 <div class="kpi-card">
                     <div class="kpi-title">Promedio Productos / Documento</div>
-                    <div class="kpi-value-big">{prom_prod_por_doc:,.1f}</div>
-                    <div class="kpi-sub" style="color: #6366F1;">📦 Unidades por Documento</div>
+                    <div class="kpi-value-big">{prom_prod_por_doc:.1f}</div>
+                    <div class="kpi-sub" style="color: #6366F1;">📦 Ítems distintos por Documento</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -591,8 +590,8 @@ elif st.session_state.pagina_actual == "kpis":
                 f"""
                 <div class="kpi-card">
                     <div class="kpi-title">Promedio Productos / Día</div>
-                    <div class="kpi-value-big">{prom_prod_por_dia:,.1f}</div>
-                    <div class="kpi-sub" style="color: #2563EB;">📅 Unidades por Día Operativo</div>
+                    <div class="kpi-value-big">{prom_prod_por_dia:.1f}</div>
+                    <div class="kpi-sub" style="color: #2563EB;">📅 Ítems distintos por Día</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
