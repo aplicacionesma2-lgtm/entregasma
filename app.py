@@ -564,11 +564,12 @@ elif st.session_state.pagina_actual == "kpis":
         # CÁLCULOS
         total_unidades = df_kpi["Cantidad"].sum()
         total_docs = df_kpi["Número de documento"].nunique()
-        total_sku = df_kpi["Número de artículo"].nunique()
         total_dias_actividad = df_kpi["Fecha de vencimiento"].nunique()
+        total_sku = df_kpi["Número de artículo"].nunique()
 
-        promedio_unidades_doc = total_unidades / total_docs if total_docs > 0 else 0
-        promedio_diario = total_unidades / total_dias_actividad if total_dias_actividad > 0 else 0
+        # Promedios por volumen de productos (unidades físicas)
+        prom_prod_por_doc = total_unidades / total_docs if total_docs > 0 else 0
+        prom_prod_por_dia = total_unidades / total_dias_actividad if total_dias_actividad > 0 else 0
 
         # TARJETAS DE KPIS PRINCIPALES
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -577,9 +578,9 @@ elif st.session_state.pagina_actual == "kpis":
             st.markdown(
                 f"""
                 <div class="kpi-card">
-                    <div class="kpi-title">Promedio Unidades / Documento</div>
-                    <div class="kpi-value-big">{promedio_unidades_doc:,.1f}</div>
-                    <div class="kpi-sub">📦 Tamaño Promedio de Orden</div>
+                    <div class="kpi-title">Promedio Productos / Documento</div>
+                    <div class="kpi-value-big">{prom_prod_por_doc:,.1f}</div>
+                    <div class="kpi-sub" style="color: #6366F1;">📦 Unidades por Documento</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -589,9 +590,9 @@ elif st.session_state.pagina_actual == "kpis":
             st.markdown(
                 f"""
                 <div class="kpi-card">
-                    <div class="kpi-title">Promedio Unidades / Día</div>
-                    <div class="kpi-value-big">{promedio_diario:,.0f}</div>
-                    <div class="kpi-sub" style="color: #2563EB;">📅 Ritmo de Entrega Diario</div>
+                    <div class="kpi-title">Promedio Productos / Día</div>
+                    <div class="kpi-value-big">{prom_prod_por_dia:,.1f}</div>
+                    <div class="kpi-sub" style="color: #2563EB;">📅 Unidades por Día Operativo</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -620,8 +621,6 @@ elif st.session_state.pagina_actual == "kpis":
                 """,
                 unsafe_allow_html=True,
             )
-
-        st.markdown("---")
 
         # GRÁFICOS
         col_chart1, col_chart2 = st.columns(2)
