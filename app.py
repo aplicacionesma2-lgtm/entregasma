@@ -562,11 +562,12 @@ elif st.session_state.pagina_actual == "kpis":
         st.warning("No hay registros para los filtros seleccionados.")
     else:
         # CÁLCULOS
+        total_unidades = df_kpi["Cantidad"].sum()
         total_docs = df_kpi["Número de documento"].nunique()
         total_dias_actividad = df_kpi["Fecha de vencimiento"].nunique()
         total_sku = df_kpi["Número de artículo"].nunique()
 
-        # Promedio de ÍTEMS/LÍNEAS distitnas por documento y por día
+        # Promedio de ÍTEMS/LÍNEAS distintas por documento y por día
         prom_prod_por_doc = df_kpi.groupby("Número de documento")["Número de artículo"].nunique().mean() if total_docs > 0 else 0
         prom_prod_por_dia = df_kpi.groupby("Fecha de vencimiento")["Número de artículo"].nunique().mean() if total_dias_actividad > 0 else 0
 
