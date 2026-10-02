@@ -300,6 +300,9 @@ def load_data() -> pd.DataFrame:
     df["Número de artículo"] = df["Número de artículo"].astype(str).str.strip()
     df["Descripción del artículo"] = df["Descripción del artículo"].astype(str).str.strip()
 
+    if "Negocio" in df.columns:
+        df["Negocio"] = df["Negocio"].astype(str).str.strip()
+
     excluir = (
         (df["Status de documento"] == "C")
         & (df["CantidadPendiente"] > 0)
@@ -350,11 +353,11 @@ st.divider()
 if st.session_state.pagina_actual == "registro":
     
     st.markdown(
-        '<div class="app-subtitle">Filtra por fecha, almacén, orden de fabricación o artículo para visualizar registros.</div>',
+        '<div class="app-subtitle">Filtra por fecha, almacén, negocio, orden de fabricación o artículo para visualizar registros.</div>',
         unsafe_allow_html=True,
     )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col_neg_reg = st.columns([2, 1.5, 1.5, 1.5])
 
     fechas_validas = df["Fecha de vencimiento"].dropna()
     min_fecha = fechas_validas.min()
@@ -390,6 +393,12 @@ if st.session_state.pagina_actual == "registro":
 
     df_almacen = df_de_almacen if not almacenes_sel else df_de_almacen[df_de_almacen["Código de almacén"].isin(almacenes_sel)]
 
+    with col_neg_reg:
+        opciones_negocio_reg = ["TODOS"] + sorted([x for x in df_almacen["Negocio"].dropna().unique() if x != "nan"]) if "Negocio" in df_almacen.columns else ["TODOS", "B2B", "B2C"]
+        negocio_sel_reg = st.selectbox("Negocio", options=opciones_negocio_reg, key="reg_negocio")
+
+    df_negocio_reg = df_almacen if negocio_sel_reg == "TODOS" else df_almacen[df_almacen["Negocio"] == negocio_sel_reg]
+
     col4, col5, col6 = st.columns(3)
 
     with col4:
@@ -401,7 +410,7 @@ if st.session_state.pagina_actual == "registro":
     with col6:
         desc_sel = st.text_input("Descripción del artículo", value="", placeholder="Ej: ALFAJOR")
 
-    df_sel = df_almacen.copy()
+    df_sel = df_negocio_reg.copy()
 
     if doc_sel.strip():
         df_sel = df_sel[df_sel["Número de documento"].str.contains(doc_sel.strip(), case=False, na=False)]
@@ -446,6 +455,9 @@ if st.session_state.pagina_actual == "registro":
         "Número de documento", "Fecha de vencimiento", "Número de artículo",
         "Descripción del artículo", "Cantidad", "CantidadAtendida", "CantidadPendiente",
     ]
+    if "Negocio" in df_sel.columns:
+        tabla_cols.append("Negocio")
+
     st.dataframe(
         df_sel[tabla_cols].sort_values("Número de documento"),
         use_container_width=True,
@@ -483,7 +495,7 @@ if st.session_state.pagina_actual == "registro":
             fecha_txt = "TODAS"
 
         txt_destinos = ", ".join(almacenes_sel) if almacenes_sel else "TODOS"
-        filtros_str = f"Fecha: {fecha_txt} | De: {de_almacen_sel} | A: {txt_destinos}"
+        filtros_str = f"Fecha: {fecha_txt} | De: {de_almacen_sel} | A: {txt_destinos} | Negocio: {negocio_sel_reg}"
         pdf_bytes = generar_pdf_resumen_por_fecha(pivote, filtros_str)
 
         col_pdf, _ = st.columns([1, 3])
@@ -501,10 +513,10 @@ if st.session_state.pagina_actual == "registro":
 # ==========================================================================
 elif st.session_state.pagina_actual == "kpis":
 
-    st.markdown('<div class="app-subtitle">Selecciona el rango de fechas, almacenes y artículo para consultar los indicadores.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="app-subtitle">Selecciona el rango de fechas, almacenes, negocio y artículo para consultar los indicadores.</div>', unsafe_allow_html=True)
 
-    # FILTROS DE KPIS - FILA 1 (Fechas y Almacenes)
-    ck1, ck2, ck3 = st.columns(3)
+    # FILTROS DE KPIS - FILA 1 (Fechas, Almacenes y Negocio)
+    ck1, ck2, ck3, ck_neg = st.columns([2, 1.5, 1.5, 1.5])
 
     fechas_validas_kpi = df["Fecha de vencimiento"].dropna()
     min_fecha_k = fechas_validas_kpi.min()
@@ -540,6 +552,13 @@ elif st.session_state.pagina_actual == "kpis":
 
     if a_alm_kpi:
         df_kpi = df_kpi[df_kpi["Código de almacén"].isin(a_alm_kpi)]
+
+    with ck_neg:
+        opciones_negocio_kpi = ["TODOS"] + sorted([x for x in df_kpi["Negocio"].dropna().unique() if x != "nan"]) if "Negocio" in df_kpi.columns else ["TODOS", "B2B", "B2C"]
+        negocio_kpi = st.selectbox("Negocio", options=opciones_negocio_kpi, key="kpi_negocio")
+
+    if negocio_kpi != "TODOS" and "Negocio" in df_kpi.columns:
+        df_kpi = df_kpi[df_kpi["Negocio"] == negocio_kpi]
 
     # FILTROS DE KPIS - FILA 2 (Artículo y Descripción)
     ck4, ck5 = st.columns(2)
@@ -672,7 +691,7 @@ elif st.session_state.pagina_actual == "kpis":
 
         detalle_productos["% Participación"] = (
             detalle_productos["Cantidad_Entregada"] / total_unidades * 100
-        ).round(2)
+        ).round(2) if total_unidades > 0 else 0
 
         st.dataframe(
             detalle_productos,
