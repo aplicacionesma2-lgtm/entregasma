@@ -9,6 +9,7 @@ from datetime import datetime
 from io import BytesIO
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import landscape, letter
@@ -394,7 +395,7 @@ if st.session_state.pagina_actual == "registro":
     df_almacen = df_de_almacen if not almacenes_sel else df_de_almacen[df_de_almacen["Código de almacén"].isin(almacenes_sel)]
 
     with col_neg_reg:
-        opciones_negocio_reg = ["TODOS"] + sorted([x for x in df_almacen["Negocio"].dropna().unique() if x != "nan"]) if "Negocio" in df_almacen.columns else ["TODOS", "B2B", "B2C"]
+        opciones_negocio_reg = ["TODOS"] + sorted([x for x in df_almacen["Negocio"].dropna().unique() if str(x) != "nan"]) if "Negocio" in df_almacen.columns else ["TODOS", "B2B", "B2C"]
         negocio_sel_reg = st.selectbox("Negocio", options=opciones_negocio_reg, key="reg_negocio")
 
     df_negocio_reg = df_almacen if negocio_sel_reg == "TODOS" else df_almacen[df_almacen["Negocio"] == negocio_sel_reg]
@@ -554,7 +555,7 @@ elif st.session_state.pagina_actual == "kpis":
         df_kpi = df_kpi[df_kpi["Código de almacén"].isin(a_alm_kpi)]
 
     with ck_neg:
-        opciones_negocio_kpi = ["TODOS"] + sorted([x for x in df_kpi["Negocio"].dropna().unique() if x != "nan"]) if "Negocio" in df_kpi.columns else ["TODOS", "B2B", "B2C"]
+        opciones_negocio_kpi = ["TODOS"] + sorted([x for x in df_kpi["Negocio"].dropna().unique() if str(x) != "nan"]) if "Negocio" in df_kpi.columns else ["TODOS", "B2B", "B2C"]
         negocio_kpi = st.selectbox("Negocio", options=opciones_negocio_kpi, key="kpi_negocio")
 
     if negocio_kpi != "TODOS" and "Negocio" in df_kpi.columns:
@@ -580,26 +581,58 @@ elif st.session_state.pagina_actual == "kpis":
     if df_kpi.empty:
         st.warning("No hay registros para los filtros seleccionados.")
     else:
-        # CÁLCULOS
+        # -------------------------------------------------------------------------
+        # CÁLCULOS PRINCIPALES Y KPIS
+        # -------------------------------------------------------------------------
         total_unidades = df_kpi["Cantidad"].sum()
         total_docs = df_kpi["Número de documento"].nunique()
         total_dias_actividad = df_kpi["Fecha de vencimiento"].nunique()
         total_sku = df_kpi["Número de artículo"].nunique()
 
-        # Promedio de ÍTEMS/LÍNEAS distintas por documento y por día
+        # Promedios de ítems
         prom_prod_por_doc = df_kpi.groupby("Número de documento")["Número de artículo"].nunique().mean() if total_docs > 0 else 0
         prom_prod_por_dia = df_kpi.groupby("Fecha de vencimiento")["Número de artículo"].nunique().mean() if total_dias_actividad > 0 else 0
 
-        # TARJETAS DE KPIS PRINCIPALES
+        # KPI 1: Fill Rate / Entregas Completas
+        docs_pendientes = df_kpi.groupby("Número de documento")["CantidadPendiente"].sum()
+        docs_completos = (docs_pendientes == 0).sum()
+        pct_fill_rate = (docs_completos / total_docs * 100) if total_docs > 0 else 0
+
+        # KPI 2: Mix B2B vs B2C
+        if "Negocio" in df_kpi.columns and total_unidades > 0:
+            vol_b2b = df_kpi[df_kpi["Negocio"] == "B2B"]["Cantidad"].sum()
+            vol_b2c = df_kpi[df_kpi["Negocio"] == "B2C"]["Cantidad"].sum()
+            pct_b2b = (vol_b2b / total_unidades) * 100
+            pct_b2c = (vol_b2c / total_unidades) * 100
+        else:
+            pct_b2b, pct_b2c = 0, 0
+
+        # KPI 3: Concentración Pareto (Top 20% SKUs)
+        if total_sku > 0 and total_unidades > 0:
+            top_20_count = max(1, int(total_sku * 0.20))
+            vol_top_20 = (
+                df_kpi.groupby("Número de artículo")["Cantidad"]
+                .sum()
+                .sort_values(ascending=False)
+                .head(top_20_count)
+                .sum()
+            )
+            pct_pareto = (vol_top_20 / total_unidades) * 100
+        else:
+            pct_pareto = 0
+
+        # -------------------------------------------------------------------------
+        # TARJETAS DE KPIS PRINCIPALES (FILA 1 Y 2)
+        # -------------------------------------------------------------------------
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
         with kpi1:
             st.markdown(
                 f"""
                 <div class="kpi-card">
-                    <div class="kpi-title">Promedio Productos / Documento</div>
+                    <div class="kpi-title">Promedio Productos / Doc</div>
                     <div class="kpi-value-big">{prom_prod_por_doc:.1f}</div>
-                    <div class="kpi-sub" style="color: #6366F1;">📦 Ítems distintos por Documento</div>
+                    <div class="kpi-sub" style="color: #6366F1;">📦 Ítems distintos / Documento</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -611,7 +644,7 @@ elif st.session_state.pagina_actual == "kpis":
                 <div class="kpi-card">
                     <div class="kpi-title">Promedio Productos / Día</div>
                     <div class="kpi-value-big">{prom_prod_por_dia:.1f}</div>
-                    <div class="kpi-sub" style="color: #2563EB;">📅 Ítems distintos por Día</div>
+                    <div class="kpi-sub" style="color: #2563EB;">📅 Ítems distintos / Día</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -621,9 +654,9 @@ elif st.session_state.pagina_actual == "kpis":
             st.markdown(
                 f"""
                 <div class="kpi-card">
-                    <div class="kpi-title">Variedad de Productos (SKUs)</div>
+                    <div class="kpi-title">Variedad de SKUs</div>
                     <div class="kpi-value-big">{total_sku:,}</div>
-                    <div class="kpi-sub" style="color: #D97706;">🏷️ Catálogo Solicitado</div>
+                    <div class="kpi-sub" style="color: #D97706;">🏷️ Catálogo Movido</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -633,7 +666,7 @@ elif st.session_state.pagina_actual == "kpis":
             st.markdown(
                 f"""
                 <div class="kpi-card">
-                    <div class="kpi-title">Días Operativos con Entrega</div>
+                    <div class="kpi-title">Días Operativos</div>
                     <div class="kpi-value-big">{total_dias_actividad}</div>
                     <div class="kpi-sub" style="color: #059669;">🗓️ Cobertura de Calendario</div>
                 </div>
@@ -641,11 +674,67 @@ elif st.session_state.pagina_actual == "kpis":
                 unsafe_allow_html=True,
             )
 
-        # GRÁFICOS
-        col_chart1, col_chart2 = st.columns(2)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        kpi5, kpi6, kpi7, kpi8 = st.columns(4)
+
+        with kpi5:
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-title">Nivel de Servicio (Fill Rate)</div>
+                    <div class="kpi-value-big">{pct_fill_rate:.1f}%</div>
+                    <div class="kpi-sub" style="color: #059669;">✅ Docs Entregados al 100%</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with kpi6:
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-title">Participación B2B</div>
+                    <div class="kpi-value-big">{pct_b2b:.1f}%</div>
+                    <div class="kpi-sub" style="color: #2563EB;">🏢 Del Volumen Total</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with kpi7:
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-title">Participación B2C</div>
+                    <div class="kpi-value-big">{pct_b2c:.1f}%</div>
+                    <div class="kpi-sub" style="color: #8B5CF6;">🏪 Del Volumen Total</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with kpi8:
+            st.markdown(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-title">Concentración Top 20% SKUs</div>
+                    <div class="kpi-value-big">{pct_pareto:.1f}%</div>
+                    <div class="kpi-sub" style="color: #D97706;">🔥 Del Volumen en Productos Clave</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("---")
+
+        # -------------------------------------------------------------------------
+        # SECCIÓN DE GRÁFICOS (VOLUMEN, TENDENCIA Y MIX B2B / B2C)
+        # -------------------------------------------------------------------------
+        col_chart1, col_chart2, col_chart3 = st.columns([1.5, 1.5, 1])
 
         with col_chart1:
-            st.markdown("### 🏆 Top 10 Productos por Volumen Total")
+            st.markdown("### 🏆 Top 10 Productos por Volumen")
             top_productos = (
                 df_kpi.groupby("Descripción del artículo")["Cantidad"]
                 .sum()
@@ -661,7 +750,7 @@ elif st.session_state.pagina_actual == "kpis":
             )
 
         with col_chart2:
-            st.markdown("### 📅 Comportamiento Diario de Volumen")
+            st.markdown("### 📅 Comportamiento Diario")
             evolucion_volumen = (
                 df_kpi.groupby("Fecha de vencimiento")["Cantidad"]
                 .sum()
@@ -673,6 +762,28 @@ elif st.session_state.pagina_actual == "kpis":
                 y="Cantidad",
                 color="#2C5F7C",
             )
+
+        with col_chart3:
+            st.markdown("### 🍩 Mix B2B vs B2C")
+            if "Negocio" in df_kpi.columns and total_unidades > 0:
+                df_pie = df_kpi.groupby("Negocio")["Cantidad"].sum().reset_index()
+                fig_pie = px.pie(
+                    df_pie,
+                    values="Cantidad",
+                    names="Negocio",
+                    hole=0.45,
+                    color="Negocio",
+                    color_discrete_map={"B2B": "#2563EB", "B2C": "#8B5CF6"}
+                )
+                fig_pie.update_traces(textinfo="percent+label", textposition="inside")
+                fig_pie.update_layout(
+                    showlegend=False,
+                    margin=dict(t=10, b=10, l=10, r=10),
+                    height=280
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("Sin datos de Negocio")
 
         st.markdown("---")
 
