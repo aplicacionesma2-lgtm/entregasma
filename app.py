@@ -139,15 +139,16 @@ st.markdown(
 def crear_grafico_pareto(df_input: pd.DataFrame):
     """
     Genera un gráfico combinado (Barras + Línea Acumulada) para la Curva Pareto ABC.
-    Inicializa explícitamente el eje secundario con make_subplots.
+    Utiliza px.bar como base y go.Scatter con yaxis='y2' para el eje secundario.
     """
     if df_input is None or df_input.empty:
         return None
 
-    # Agrupar por producto y ordenar descendente
+    # 1. Agrupar volumen por producto y ordenar de mayor a menor
     df_pareto = (
-        df_input.groupby("Descripción del artículo", as_index=False)["Cantidad"]
+        df_input.groupby("Descripción del artículo")["Cantidad"]
         .sum()
+        .reset_index()
         .sort_values("Cantidad", ascending=False)
     )
 
@@ -155,67 +156,63 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
     if total_vol == 0:
         return None
 
-    # Cálculo de porcentaje acumulado
+    # 2. Porcentaje acumulado
     df_pareto["% Acumulado"] = (df_pareto["Cantidad"].cumsum() / total_vol) * 100
 
-    # Selección de los Top 20 SKUs
+    # Limitar a Top 20 SKUs
     df_plot = df_pareto.head(20).copy()
 
-    # Construcción nativa del lienzo con eje Y secundario
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-    # Barras de volumen (Eje Y primario)
-    fig.add_trace(
-        go.Bar(
-            x=df_plot["Descripción del artículo"],
-            y=df_plot["Cantidad"],
-            name="Volumen (Unidades)",
-            marker_color="#1B2B85",
-            hovertemplate="<b>%{x}</b><br>Volumen: %{y:,.2f}<extra></extra>",
-        ),
-        secondary_y=False,
+    # 3. Crear figura base con Plotly Express (Barras de volumen)
+    fig = px.bar(
+        df_plot,
+        x="Descripción del artículo",
+        y="Cantidad",
+        title="Curva Pareto ABC (Top 20 SKUs por Volumen)",
+        labels={
+            "Descripción del artículo": "Producto",
+            "Cantidad": "Volumen (Unidades)",
+        },
+        color_discrete_sequence=["#1B2B85"],
     )
 
-    # Línea acumulada (Eje Y secundario)
+    # 4. Agregar la línea acumulada asignando el eje secundario 'y2'
     fig.add_trace(
         go.Scatter(
             x=df_plot["Descripción del artículo"],
             y=df_plot["% Acumulado"],
             name="% Acumulado",
+            yaxis="y2",
             mode="lines+markers",
             line=dict(color="#D97706", width=3),
             marker=dict(size=6),
             hovertemplate="<b>%{x}</b><br>Acumulado: %{y:.1f}%<extra></extra>",
-        ),
-        secondary_y=True,
+        )
     )
 
-    # Umbral horizontal del 80% (Pareto)
-    fig.add_hline(
-        y=80,
-        line_dash="dash",
-        line_color="#EF4444",
-        annotation_text="Límite 80%",
-        annotation_position="bottom right",
-        secondary_y=True,
-    )
-
-    # Formato de maquetación general
+    # 5. Configurar el diseño y activar el eje Y2
     fig.update_layout(
-        title_text="Curva Pareto ABC (Top 20 SKUs por Volumen)",
+        xaxis=dict(tickangle=-45),
+        yaxis=dict(title="Volumen Entregado"),
+        yaxis2=dict(
+            title="% Acumulado",
+            overlaying="y",
+            side="right",
+            range=[0, 105],
+            showgrid=False,
+        ),
         legend=dict(orient="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(l=10, r=10, t=50, b=100),
         height=420,
     )
 
-    # Formato independiente de ejes
-    fig.update_xaxes(title_text="Producto", tickangle=-45)
-    fig.update_yaxes(title_text="Volumen Entregado", secondary_y=False)
-    fig.update_yaxes(
-        title_text="% Acumulado",
-        range=[0, 105],
-        showgrid=False,
-        secondary_y=True,
+    # 6. Línea de umbral del 80% (Pareto)
+    fig.add_hline(
+        y=80,
+        yref="y2",
+        line_dash="dash",
+        line_color="#EF4444",
+        annotation_text="Límite 80% (Pareto)",
+        annotation_position="bottom right",
     )
 
     return fig
