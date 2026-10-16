@@ -1,4 +1,6 @@
-streamlit>=1.35
-pandas>=2.0
-st-gsheets-connection
-reportlab>=4.0
+streamlit
+pandas
+streamlit-gsheets
+reportlab
+openpyxl
+plotly
