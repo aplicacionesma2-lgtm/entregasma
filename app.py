@@ -12,8 +12,6 @@ from io import BytesIO
 import gspread
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
 from google.oauth2.service_account import Credentials
 from reportlab.lib import colors
@@ -134,12 +132,12 @@ st.markdown(
 )
 
 # --------------------------------------------------------------------------
-# Función para Generar Gráfico Pareto (Curva ABC) con make_subplots
+# Función para Generar Análisis Pareto (Curva ABC en dos gráficos limpios)
 # --------------------------------------------------------------------------
 def crear_grafico_pareto(df_input: pd.DataFrame):
     """
-    Genera un gráfico combinado (Barras + Línea Acumulada) para la Curva Pareto ABC.
-    Utiliza px.bar como base y go.Scatter con yaxis='y2' para el eje secundario.
+    Genera el análisis Pareto (Top SKUs por Volumen y Porcentaje Acumulado)
+    utilizando dos gráficos limpios e independientes para evitar conflictos en Plotly.
     """
     if df_input is None or df_input.empty:
         return None
@@ -156,66 +154,58 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
     if total_vol == 0:
         return None
 
-    # 2. Porcentaje acumulado
+    # 2. Calcular porcentaje acumulado
     df_pareto["% Acumulado"] = (df_pareto["Cantidad"].cumsum() / total_vol) * 100
 
-    # Limitar a Top 20 SKUs
+    # Tomar los Top 20 SKUs
     df_plot = df_pareto.head(20).copy()
 
-    # 3. Crear figura base con Plotly Express (Barras de volumen)
-    fig = px.bar(
+    # 3. Gráfico 1: Barras de Volumen
+    fig_barras = px.bar(
         df_plot,
         x="Descripción del artículo",
         y="Cantidad",
-        title="Curva Pareto ABC (Top 20 SKUs por Volumen)",
+        title="Volumen Entregado por Producto (Top 20 SKUs)",
         labels={
             "Descripción del artículo": "Producto",
-            "Cantidad": "Volumen (Unidades)",
+            "Cantidad": "Unidades Entregadas",
         },
         color_discrete_sequence=["#1B2B85"],
     )
-
-    # 4. Agregar la línea acumulada asignando el eje secundario 'y2'
-    fig.add_trace(
-        go.Scatter(
-            x=df_plot["Descripción del artículo"],
-            y=df_plot["% Acumulado"],
-            name="% Acumulado",
-            yaxis="y2",
-            mode="lines+markers",
-            line=dict(color="#D97706", width=3),
-            marker=dict(size=6),
-            hovertemplate="<b>%{x}</b><br>Acumulado: %{y:.1f}%<extra></extra>",
-        )
-    )
-
-    # 5. Configurar el diseño y activar el eje Y2
-    fig.update_layout(
+    fig_barras.update_layout(
         xaxis=dict(tickangle=-45),
-        yaxis=dict(title="Volumen Entregado"),
-        yaxis2=dict(
-            title="% Acumulado",
-            overlaying="y",
-            side="right",
-            range=[0, 105],
-            showgrid=False,
-        ),
-        legend=dict(orient="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=10, r=10, t=50, b=100),
-        height=420,
+        margin=dict(l=10, r=10, t=40, b=80),
+        height=350,
     )
 
-    # 6. Línea de umbral del 80% (Pareto)
-    fig.add_hline(
+    # 4. Gráfico 2: Curva de Porcentaje Acumulado (Pareto)
+    fig_linea = px.line(
+        df_plot,
+        x="Descripción del artículo",
+        y="% Acumulado",
+        title="Curva de Porcentaje Acumulado Pareto (Meta: 80%)",
+        labels={
+            "Descripción del artículo": "Producto",
+            "% Acumulado": "% Acumulado",
+        },
+        markers=True,
+        color_discrete_sequence=["#D97706"],
+    )
+    fig_linea.add_hline(
         y=80,
-        yref="y2",
         line_dash="dash",
         line_color="#EF4444",
-        annotation_text="Límite 80% (Pareto)",
+        annotation_text="Corte 80%",
         annotation_position="bottom right",
     )
+    fig_linea.update_layout(
+        xaxis=dict(tickangle=-45),
+        yaxis=dict(range=[0, 105]),
+        margin=dict(l=10, r=10, t=40, b=80),
+        height=350,
+    )
 
-    return fig
+    return fig_barras, fig_linea
 
 # --------------------------------------------------------------------------
 # Función PDF con pivote por Fecha (Landscape)
@@ -843,7 +833,7 @@ elif st.session_state.pagina_actual == "kpis":
         st.markdown("---")
 
         # -------------------------------------------------------------------------
-        # SECCIÓN DE GRÁFICOS (VOLUMEN, TENDENCIA, MIX B2B/B2C Y PARETO)
+        # SECCIÓN DE GRÁFICOS (VOLUMEN, TENDENCIA, MIX B2B/B2C)
         # -------------------------------------------------------------------------
         col_chart1, col_chart2, col_chart3 = st.columns([1.5, 1.5, 1])
 
@@ -901,11 +891,16 @@ elif st.session_state.pagina_actual == "kpis":
 
         st.markdown("---")
 
-        # SECCIÓN PARETO INTERACTIVO
+        # SECCIÓN PARETO (ROBUSTA Y SIN EJE SECUNDARIO)
         st.markdown("### 📈 Análisis de Concentración Pareto (Curva ABC)")
-        fig_pareto = crear_grafico_pareto(df_kpi)
-        if fig_pareto:
-            st.plotly_chart(fig_pareto, use_container_width=True)
+        resultado_pareto = crear_grafico_pareto(df_kpi)
+        if resultado_pareto:
+            fig_barras, fig_linea = resultado_pareto
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                st.plotly_chart(fig_barras, use_container_width=True)
+            with col_p2:
+                st.plotly_chart(fig_linea, use_container_width=True)
         else:
             st.info("Sin información para generar la curva Pareto.")
 
