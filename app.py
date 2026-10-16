@@ -139,12 +139,12 @@ st.markdown(
 def crear_grafico_pareto(df_input: pd.DataFrame):
     """
     Genera un gráfico combinado (Barras + Línea Acumulada) para la Curva Pareto ABC.
-    Usa make_subplots para inicializar correctamente el eje secundario en Plotly.
+    Inicializa explícitamente el eje secundario con make_subplots.
     """
     if df_input is None or df_input.empty:
         return None
 
-    # Agrupar y ordenar de mayor a menor
+    # Agrupar por producto y ordenar descendente
     df_pareto = (
         df_input.groupby("Descripción del artículo", as_index=False)["Cantidad"]
         .sum()
@@ -155,15 +155,16 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
     if total_vol == 0:
         return None
 
+    # Cálculo de porcentaje acumulado
     df_pareto["% Acumulado"] = (df_pareto["Cantidad"].cumsum() / total_vol) * 100
 
-    # Limitar a Top 20 SKUs
+    # Selección de los Top 20 SKUs
     df_plot = df_pareto.head(20).copy()
 
-    # Inicializar figura con subplots explícitos para eje secundario
+    # Construcción nativa del lienzo con eje Y secundario
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # 1. Barras de Volumen
+    # Barras de volumen (Eje Y primario)
     fig.add_trace(
         go.Bar(
             x=df_plot["Descripción del artículo"],
@@ -175,7 +176,7 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
         secondary_y=False,
     )
 
-    # 2. Línea % Acumulado
+    # Línea acumulada (Eje Y secundario)
     fig.add_trace(
         go.Scatter(
             x=df_plot["Descripción del artículo"],
@@ -189,7 +190,7 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
         secondary_y=True,
     )
 
-    # 3. Línea del 80% (Pareto)
+    # Umbral horizontal del 80% (Pareto)
     fig.add_hline(
         y=80,
         line_dash="dash",
@@ -199,7 +200,7 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
         secondary_y=True,
     )
 
-    # Configuración de diseño
+    # Formato de maquetación general
     fig.update_layout(
         title_text="Curva Pareto ABC (Top 20 SKUs por Volumen)",
         legend=dict(orient="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -207,7 +208,7 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
         height=420,
     )
 
-    # Configuración limpia de ejes
+    # Formato independiente de ejes
     fig.update_xaxes(title_text="Producto", tickangle=-45)
     fig.update_yaxes(title_text="Volumen Entregado", secondary_y=False)
     fig.update_yaxes(
