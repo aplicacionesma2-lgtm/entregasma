@@ -1,6 +1,7 @@
 streamlit
 pandas
-streamlit-gsheets
+st-gsheets-connection
+gspread
 reportlab
 openpyxl
 plotly
