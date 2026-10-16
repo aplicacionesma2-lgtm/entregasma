@@ -312,6 +312,7 @@ def load_data() -> pd.DataFrame:
         st.error("Faltan columnas en la hoja de cálculo: " + ", ".join(faltantes))
         st.stop()
 
+    # Convertir 'Fecha de vencimiento' garantizando el tipo date sin PyArrow
     df["Fecha de vencimiento"] = pd.to_datetime(
         df["Fecha de vencimiento"], errors="coerce"
     ).dt.date
