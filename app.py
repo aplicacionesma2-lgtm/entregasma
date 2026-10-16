@@ -181,7 +181,7 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
         )
     )
 
-    # Línea de Porcentaje Acumulado (Vinculada al eje y2)
+    # Línea de Porcentaje Acumulado (Vinculada al eje secundario y2)
     fig.add_trace(
         go.Scatter(
             x=df_plot["Descripción del artículo"],
@@ -195,34 +195,37 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
         )
     )
 
-    # Configuración de ejes y diseño
+    # Layout corregido sin conflicto de argumentos en los ejes
     fig.update_layout(
         title="Curva Pareto ABC (Top 20 SKUs por Volumen)",
-        xaxis_title="Producto",
-        yaxis_title="Volumen Entregado",
+        xaxis=dict(
+            title="Producto",
+            tickangle=-45
+        ),
+        yaxis=dict(
+            title="Volumen Entregado"
+        ),
         yaxis2=dict(
             title="% Acumulado",
             overlaying="y",
             side="right",
             range=[0, 105],
-            showgrid=False,
+            showgrid=False
         ),
-        xaxis=dict(tickangle=-45),
         legend=dict(orient="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(l=10, r=10, t=50, b=100),
         height=420,
     )
 
-    # Añadir línea de corte del 80%
-    if len(df_plot) > 0:
-        fig.add_hline(
-            y=80,
-            yref="y2",
-            line_dash="dash",
-            line_color="#EF4444",
-            annotation_text="Límite 80% (Pareto)",
-            annotation_position="bottom right"
-        )
+    # Línea guía horizontal para el límite del 80% (Pareto)
+    fig.add_hline(
+        y=80,
+        yref="y2",
+        line_dash="dash",
+        line_color="#EF4444",
+        annotation_text="Límite 80% (Pareto)",
+        annotation_position="bottom right"
+    )
 
     return fig
 
