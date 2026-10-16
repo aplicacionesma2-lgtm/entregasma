@@ -1,23 +1,24 @@
 """
 Panel de Registro de Entrega de Productos Terminados & KPIs
 ------------------------------------------------------------
-Lee los registros desde Google Sheets, gestiona la exploración de entregas,
-exportación a PDF por fecha y un Dashboard de Indicadores Ejecutivo.
+Lee los registros desde Google Sheets mediante gspread nativo, gestiona
+la exploración de entregas, exportación a PDF por fecha y un Dashboard
+de Indicadores Ejecutivo con gráficos de Plotly.
 """
 
 from datetime import datetime
 from io import BytesIO
 
+import gspread
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from google.oauth2.service_account import Credentials
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from streamlit_gsheets import GSheetsConnection
-from st_gsheets_connection import GSheetsConnection
 
 # --------------------------------------------------------------------------
 # Configuración general de la página
@@ -259,7 +260,7 @@ def generar_pdf_resumen_por_fecha(df_pivote: pd.DataFrame, filtros_info: str) ->
 
 
 # --------------------------------------------------------------------------
-# Carga de datos desde Google Sheets
+# Carga NATIVA de datos con gspread (Sin st-gsheets-connection)
 # --------------------------------------------------------------------------
 REQUIRED_COLS = [
     "Número de documento",
@@ -278,9 +279,24 @@ REQUIRED_COLS = [
 @st.cache_data(ttl=300, show_spinner="Cargando datos desde Google Sheets…")
 def load_data() -> pd.DataFrame:
     try:
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        df = conn.read(worksheet="Sheet1", ttl=300)
-        return df
+        # Extraer credenciales directamente de st.secrets
+        sec_gsheets = st.secrets["connections"]["gsheets"]
+        credentials_dict = dict(sec_gsheets)
+
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+
+        creds = Credentials.from_service_account_info(credentials_dict, scopes=scopes)
+        client = gspread.authorize(creds)
+
+        spreadsheet_url = credentials_dict.get("spreadsheet")
+        sh = client.open_by_url(spreadsheet_url)
+        worksheet = sh.worksheet("Sheet1")
+
+        data = worksheet.get_all_records()
+        df = pd.DataFrame(data)
     except Exception as e:
         st.error(f"Error al conectar con Google Sheets: {e}")
         st.stop()
