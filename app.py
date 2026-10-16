@@ -260,7 +260,7 @@ def generar_pdf_resumen_por_fecha(df_pivote: pd.DataFrame, filtros_info: str) ->
 
 
 # --------------------------------------------------------------------------
-# Carga NATIVA de datos con gspread (Sin st-gsheets-connection)
+# Carga NATIVA de datos con gspread y sanitizado de clave PEM
 # --------------------------------------------------------------------------
 REQUIRED_COLS = [
     "Número de documento",
@@ -282,9 +282,9 @@ def load_data() -> pd.DataFrame:
         sec_gsheets = st.secrets["connections"]["gsheets"]
         credentials_dict = dict(sec_gsheets)
 
-        # Sanitizar private_key reemplazando secuencias de texto literal '\n' por saltos reales
+        # Sanitizar private_key convirtiendo secuencias \n en saltos reales si fuese necesario
         if "private_key" in credentials_dict:
-            pk = credentials_dict["private_key"]
+            pk = str(credentials_dict["private_key"])
             credentials_dict["private_key"] = pk.replace("\\n", "\n")
 
         scopes = [
@@ -301,7 +301,6 @@ def load_data() -> pd.DataFrame:
 
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
-        return df
     except Exception as e:
         st.error(f"Error al conectar con Google Sheets: {e}")
         st.stop()
@@ -312,12 +311,14 @@ def load_data() -> pd.DataFrame:
         st.error("Faltan columnas en la hoja de cálculo: " + ", ".join(faltantes))
         st.stop()
 
-    # Convertir 'Fecha de vencimiento' garantizando el tipo date sin PyArrow
+    # Normalización estricta de tipos de datos para prevenir PyArrow TypeError
     df["Fecha de vencimiento"] = pd.to_datetime(
         df["Fecha de vencimiento"], errors="coerce"
     ).dt.date
+
     for col in ["Cantidad", "CantidadAtendida", "CantidadPendiente"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
     df["De código de almacén"] = df["De código de almacén"].astype(str).str.strip()
     df["Código de almacén"] = df["Código de almacén"].astype(str).str.strip()
     df["Status de documento"] = df["Status de documento"].astype(str).str.strip()
@@ -351,7 +352,7 @@ col_header, col_nav = st.columns([3, 1])
 with col_header:
     if st.session_state.pagina_actual == "registro":
         st.markdown(
-            '<h1 style="font-size: 40px; color: #1B2B85; font-weight: 700; margin: 0;">📦 Registro de Entrega de Productos Terminados</h1>',
+            '<h1 style="font-size: 38px; color: #1B2B85; font-weight: 700; margin: 0;">📦 Registro de Entrega de Productos Terminados</h1>',
             unsafe_allow_html=True
         )
     else:
@@ -384,9 +385,9 @@ if st.session_state.pagina_actual == "registro":
 
     col1, col2, col3, col_neg_reg = st.columns([2, 1.5, 1.5, 1.5])
 
-    fechas_validas = df["Fecha de vencimiento"].dropna()
-    min_fecha = fechas_validas.min()
-    max_fecha = fechas_validas.max()
+    fechas_validas = pd.to_datetime(df["Fecha de vencimiento"].dropna())
+    min_fecha = fechas_validas.min().date() if not fechas_validas.empty else datetime.now().date()
+    max_fecha = fechas_validas.max().date() if not fechas_validas.empty else datetime.now().date()
 
     with col1:
         rango_fechas = st.date_input(
@@ -398,11 +399,15 @@ if st.session_state.pagina_actual == "registro":
             key="reg_fechas"
         )
 
+    # Filtrado comparativo seguro mediante pd.to_datetime
     if isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 2:
         f_inicio, f_fin = rango_fechas
-        df_fecha = df[(df["Fecha de vencimiento"] >= f_inicio) & (df["Fecha de vencimiento"] <= f_fin)]
+        df_fecha = df[
+            (pd.to_datetime(df["Fecha de vencimiento"]) >= pd.to_datetime(f_inicio)) &
+            (pd.to_datetime(df["Fecha de vencimiento"]) <= pd.to_datetime(f_fin))
+        ]
     elif isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 1:
-        df_fecha = df[df["Fecha de vencimiento"] == rango_fechas[0]]
+        df_fecha = df[pd.to_datetime(df["Fecha de vencimiento"]) == pd.to_datetime(rango_fechas[0])]
     else:
         df_fecha = df.copy()
 
@@ -543,9 +548,9 @@ elif st.session_state.pagina_actual == "kpis":
     # FILTROS DE KPIS - FILA 1 (Fechas, Almacenes y Negocio)
     ck1, ck2, ck3, ck_neg = st.columns([2, 1.5, 1.5, 1.5])
 
-    fechas_validas_kpi = df["Fecha de vencimiento"].dropna()
-    min_fecha_k = fechas_validas_kpi.min()
-    max_fecha_k = fechas_validas_kpi.max()
+    fechas_validas_kpi = pd.to_datetime(df["Fecha de vencimiento"].dropna())
+    min_fecha_k = fechas_validas_kpi.min().date() if not fechas_validas_kpi.empty else datetime.now().date()
+    max_fecha_k = fechas_validas_kpi.max().date() if not fechas_validas_kpi.empty else datetime.now().date()
 
     with ck1:
         rango_kpi = st.date_input(
@@ -557,10 +562,14 @@ elif st.session_state.pagina_actual == "kpis":
             key="kpi_fechas"
         )
 
+    # Filtrado comparativo seguro en sección KPIs
     if isinstance(rango_kpi, (tuple, list)) and len(rango_kpi) == 2:
-        df_kpi = df[(df["Fecha de vencimiento"] >= rango_kpi[0]) & (df["Fecha de vencimiento"] <= rango_kpi[1])]
+        df_kpi = df[
+            (pd.to_datetime(df["Fecha de vencimiento"]) >= pd.to_datetime(rango_kpi[0])) &
+            (pd.to_datetime(df["Fecha de vencimiento"]) <= pd.to_datetime(rango_kpi[1]))
+        ]
     elif isinstance(rango_kpi, (tuple, list)) and len(rango_kpi) == 1:
-        df_kpi = df[df["Fecha de vencimiento"] == rango_kpi[0]]
+        df_kpi = df[pd.to_datetime(df["Fecha de vencimiento"]) == pd.to_datetime(rango_kpi[0])]
     else:
         df_kpi = df.copy()
 
