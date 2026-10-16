@@ -138,16 +138,16 @@ st.markdown(
 # --------------------------------------------------------------------------
 def crear_grafico_pareto(df_input: pd.DataFrame):
     """
-    Genera un gráfico combinado (Barras + Línea Acumulada) para la Curva Pareto ABC.
-    Utiliza make_subplots para evitar incompatibilidad de tipos en update_layout.
+    Genera un gráfico combinado (Barras + Línea Acumulada) para la Curva Pareto ABC
+    usando Plotly Express para evitar incompatibilidades en el layout.
     """
     if df_input.empty:
         return None
 
+    # Agrupar y ordenar por volumen
     df_pareto = (
-        df_input.groupby("Descripción del artículo")["Cantidad"]
+        df_input.groupby("Descripción del artículo", as_index=False)["Cantidad"]
         .sum()
-        .reset_index()
         .sort_values("Cantidad", ascending=False)
     )
 
@@ -155,66 +155,60 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
     if total_vol == 0:
         return None
 
+    # Porcentaje acumulado
     df_pareto["% Acumulado"] = (df_pareto["Cantidad"].cumsum() / total_vol) * 100
 
-    # Limitar a los Top 20 SKUs para legibilidad en el eje X
+    # Limitar a Top 20 SKUs
     df_plot = df_pareto.head(20).copy()
 
-    # Crear la figura con eje Y secundario explícito
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-    # Barras de Volumen en Eje Primario
-    fig.add_trace(
-        go.Bar(
-            x=df_plot["Descripción del artículo"],
-            y=df_plot["Cantidad"],
-            name="Volumen (Unidades)",
-            marker_color="#1B2B85",
-            hovertemplate="<b>%{x}</b><br>Volumen: %{y:,.2f}<extra></extra>",
-        ),
-        secondary_y=False,
+    # 1. Crear figura base con Plotly Express
+    fig = px.bar(
+        df_plot,
+        x="Descripción del artículo",
+        y="Cantidad",
+        labels={
+            "Descripción del artículo": "Producto",
+            "Cantidad": "Volumen (Unidades)"
+        },
+        title="Curva Pareto ABC (Top 20 SKUs por Volumen)",
+        color_discrete_sequence=["#1B2B85"]
     )
 
-    # Línea de Porcentaje Acumulado en Eje Secundario
-    fig.add_trace(
-        go.Scatter(
-            x=df_plot["Descripción del artículo"],
-            y=df_plot["% Acumulado"],
-            name="% Acumulado",
-            mode="lines+markers",
-            line=dict(color="#D97706", width=3),
-            marker=dict(size=6),
-            hovertemplate="<b>%{x}</b><br>Acumulado: %{y:.1f}%<extra></extra>",
-        ),
-        secondary_y=True,
+    # 2. Agregar línea acumulada en eje Y2 secundario
+    fig.add_scatter(
+        x=df_plot["Descripción del artículo"],
+        y=df_plot["% Acumulado"],
+        name="% Acumulado",
+        yaxis="y2",
+        mode="lines+markers",
+        line=dict(color="#D97706", width=3),
+        marker=dict(size=6),
+        hovertemplate="<b>%{x}</b><br>Acumulado: %{y:.1f}%<extra></extra>"
     )
 
-    # Línea de umbral del 80% (Pareto)
+    # 3. Ajuste limpio de ejes y leyenda
+    fig.update_layout(
+        yaxis2=dict(
+            title="% Acumulado",
+            overlaying="y",
+            side="right",
+            range=[0, 105],
+            showgrid=False
+        ),
+        xaxis_tickangle=-45,
+        legend=dict(orient="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=10, r=10, t=50, b=100),
+        height=420
+    )
+
+    # 4. Línea de corte 80% Pareto
     fig.add_hline(
         y=80,
+        yref="y2",
         line_dash="dash",
         line_color="#EF4444",
         annotation_text="Límite 80% (Pareto)",
-        annotation_position="bottom right",
-        secondary_y=True,
-    )
-
-    # Títulos y formato general
-    fig.update_layout(
-        title_text="Curva Pareto ABC (Top 20 SKUs por Volumen)",
-        legend=dict(orient="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=10, r=10, t=50, b=100),
-        height=420,
-    )
-
-    # Ajustes estéticos para cada eje
-    fig.update_xaxes(title_text="Producto", tickangle=-45)
-    fig.update_yaxes(title_text="Volumen Entregado", secondary_y=False)
-    fig.update_yaxes(
-        title_text="% Acumulado",
-        range=[0, 105],
-        showgrid=False,
-        secondary_y=True,
+        annotation_position="bottom right"
     )
 
     return fig
