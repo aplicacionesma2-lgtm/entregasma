@@ -3,7 +3,7 @@ Panel de Registro de Entrega de Productos Terminados & KPIs
 ------------------------------------------------------------
 Lee los registros desde Google Sheets mediante gspread nativo, gestiona
 la exploración de entregas, exportación a PDF por fecha y un Dashboard
-de Indicadores Ejecutivo con gráficos de Plotly.
+de Indicadores Ejecutivo con gráficos de Plotly y Curva Pareto (ABC).
 """
 
 from datetime import datetime
@@ -12,6 +12,7 @@ from io import BytesIO
 import gspread
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 from google.oauth2.service_account import Credentials
 from reportlab.lib import colors
@@ -130,6 +131,95 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# --------------------------------------------------------------------------
+# Función para Generar Gráfico Pareto (Curva ABC)
+# --------------------------------------------------------------------------
+def crear_grafico_pareto(df_input: pd.DataFrame):
+    """
+    Genera un gráfico combinado (Barras + Línea Acumulada) para la Curva Pareto ABC.
+    """
+    df_pareto = (
+        df_input.groupby("Descripción del artículo")["Cantidad"]
+        .sum()
+        .reset_index()
+        .sort_values("Cantidad", ascending=False)
+    )
+
+    total_vol = df_pareto["Cantidad"].sum()
+    if total_vol == 0:
+        return None
+
+    df_pareto["% Acumulado"] = (df_pareto["Cantidad"].cumsum() / total_vol) * 100
+
+    def clasificar_abc(pct):
+        if pct <= 80:
+            return "A (Top 80%)"
+        elif pct <= 95:
+            return "B (Siguiente 15%)"
+        else:
+            return "C (Último 5%)"
+
+    df_pareto["Categoría"] = df_pareto["% Acumulado"].apply(clasificar_abc)
+
+    # Limitar a los Top 20 SKUs para legibilidad en el eje X
+    df_plot = df_pareto.head(20).copy()
+
+    fig = go.Figure()
+
+    # Barras de Volumen
+    fig.add_trace(
+        go.Bar(
+            x=df_plot["Descripción del artículo"],
+            y=df_plot["Cantidad"],
+            name="Volumen (Unidades)",
+            marker_color="#1B2B85",
+            hovertemplate="<b>%{x}</b><br>Volumen: %{y:,.2f}<extra></extra>",
+        )
+    )
+
+    # Línea de Porcentaje Acumulado
+    fig.add_trace(
+        go.Scatter(
+            x=df_plot["Descripción del artículo"],
+            y=df_plot["% Acumulado"],
+            name="% Acumulado",
+            yaxis="y2",
+            mode="lines+markers",
+            line=dict(color="#D97706", width=3),
+            marker=dict(size=6),
+            hovertemplate="<b>%{x}</b><br>Acumulado: %{y:.1f}%<extra></extra>",
+        )
+    )
+
+    # Línea corte Pareto (80%)
+    fig.add_shape(
+        type="line",
+        x0=-0.5,
+        x1=len(df_plot) - 0.5,
+        y0=80,
+        y1=80,
+        yref="y2",
+        line=dict(color="#EF4444", width=2, dash="dash"),
+    )
+
+    fig.update_layout(
+        title="Curva Pareto ABC (Top 20 SKUs por Volumen)",
+        xaxis=dict(title="Producto", tickangle=-45),
+        yaxis=dict(title="Volumen Entregado"),
+        yaxis2=dict(
+            title="% Acumulado",
+            overlaying="y",
+            side="right",
+            range=[0, 105],
+            showgrid=False,
+        ),
+        legend=dict(orient="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=10, r=10, t=50, b=100),
+        height=420,
+    )
+
+    return fig
 
 # --------------------------------------------------------------------------
 # Función PDF con pivote por Fecha (Landscape)
@@ -260,7 +350,7 @@ def generar_pdf_resumen_por_fecha(df_pivote: pd.DataFrame, filtros_info: str) ->
 
 
 # --------------------------------------------------------------------------
-# Carga NATIVA de datos con gspread y sanitizado de clave PEM
+# Carga NATIVA de datos con gspread
 # --------------------------------------------------------------------------
 REQUIRED_COLS = [
     "Número de documento",
@@ -282,7 +372,6 @@ def load_data() -> pd.DataFrame:
         sec_gsheets = st.secrets["connections"]["gsheets"]
         credentials_dict = dict(sec_gsheets)
 
-        # Sanitizar private_key convirtiendo secuencias \n en saltos reales si fuese necesario
         if "private_key" in credentials_dict:
             pk = str(credentials_dict["private_key"])
             credentials_dict["private_key"] = pk.replace("\\n", "\n")
@@ -311,7 +400,6 @@ def load_data() -> pd.DataFrame:
         st.error("Faltan columnas en la hoja de cálculo: " + ", ".join(faltantes))
         st.stop()
 
-    # Normalización estricta de tipos de datos para prevenir PyArrow TypeError
     df["Fecha de vencimiento"] = pd.to_datetime(
         df["Fecha de vencimiento"], errors="coerce"
     ).dt.date
@@ -399,7 +487,6 @@ if st.session_state.pagina_actual == "registro":
             key="reg_fechas"
         )
 
-    # Filtrado comparativo seguro mediante pd.to_datetime
     if isinstance(rango_fechas, (tuple, list)) and len(rango_fechas) == 2:
         f_inicio, f_fin = rango_fechas
         df_fecha = df[
@@ -539,7 +626,7 @@ if st.session_state.pagina_actual == "registro":
             )
 
 # ==========================================================================
-# VISTA 2: DASHBOARD DE INDICADORES CON FILTROS EXTENDIDOS
+# VISTA 2: DASHBOARD DE INDICADORES CON FILTROS EXTENDIDOS Y PARETO
 # ==========================================================================
 elif st.session_state.pagina_actual == "kpis":
 
@@ -562,7 +649,6 @@ elif st.session_state.pagina_actual == "kpis":
             key="kpi_fechas"
         )
 
-    # Filtrado comparativo seguro en sección KPIs
     if isinstance(rango_kpi, (tuple, list)) and len(rango_kpi) == 2:
         df_kpi = df[
             (pd.to_datetime(df["Fecha de vencimiento"]) >= pd.to_datetime(rango_kpi[0])) &
@@ -622,16 +708,15 @@ elif st.session_state.pagina_actual == "kpis":
         total_dias_actividad = df_kpi["Fecha de vencimiento"].nunique()
         total_sku = df_kpi["Número de artículo"].nunique()
 
-        # Promedios de ítems
         prom_prod_por_doc = df_kpi.groupby("Número de documento")["Número de artículo"].nunique().mean() if total_docs > 0 else 0
         prom_prod_por_dia = df_kpi.groupby("Fecha de vencimiento")["Número de artículo"].nunique().mean() if total_dias_actividad > 0 else 0
 
-        # KPI 1: Fill Rate / Entregas Completas
+        # Fill Rate
         docs_pendientes = df_kpi.groupby("Número de documento")["CantidadPendiente"].sum()
         docs_completos = (docs_pendientes == 0).sum()
         pct_fill_rate = (docs_completos / total_docs * 100) if total_docs > 0 else 0
 
-        # KPI 2: Mix B2B vs B2C
+        # Mix B2B / B2C
         if "Negocio" in df_kpi.columns and total_unidades > 0:
             vol_b2b = df_kpi[df_kpi["Negocio"] == "B2B"]["Cantidad"].sum()
             vol_b2c = df_kpi[df_kpi["Negocio"] == "B2C"]["Cantidad"].sum()
@@ -640,7 +725,7 @@ elif st.session_state.pagina_actual == "kpis":
         else:
             pct_b2b, pct_b2c = 0, 0
 
-        # KPI 3: Concentración Pareto (Top 20% SKUs)
+        # Concentración Top 20% SKUs
         if total_sku > 0 and total_unidades > 0:
             top_20_count = max(1, int(total_sku * 0.20))
             vol_top_20 = (
@@ -762,7 +847,7 @@ elif st.session_state.pagina_actual == "kpis":
         st.markdown("---")
 
         # -------------------------------------------------------------------------
-        # SECCIÓN DE GRÁFICOS (VOLUMEN, TENDENCIA Y MIX B2B / B2C)
+        # SECCIÓN DE GRÁFICOS (VOLUMEN, TENDENCIA, MIX B2B/B2C Y PARETO)
         # -------------------------------------------------------------------------
         col_chart1, col_chart2, col_chart3 = st.columns([1.5, 1.5, 1])
 
@@ -820,7 +905,17 @@ elif st.session_state.pagina_actual == "kpis":
 
         st.markdown("---")
 
-        # DETALLE DE PRODUCTOS ENTREGADOS (DE MAYOR A MENOR)
+        # SECCIÓN PARETO INTERACTIVO
+        st.markdown("### 📈 Análisis de Concentración Pareto (Curva ABC)")
+        fig_pareto = crear_grafico_pareto(df_kpi)
+        if fig_pareto:
+            st.plotly_chart(fig_pareto, use_container_width=True)
+        else:
+            st.info("Sin información para generar la curva Pareto.")
+
+        st.markdown("---")
+
+        # DETALLE DE PRODUCTOS ENTREGADOS
         st.markdown("### 📋 Detalle Completo de Productos Entregados (Mayor a Menor)")
         
         detalle_productos = (
