@@ -277,7 +277,6 @@ REQUIRED_COLS = [
 @st.cache_data(ttl=300, show_spinner="Cargando datos desde Google Sheets…")
 def load_data() -> pd.DataFrame:
     try:
-        # Usamos la conexión pasando la clase GSheetsConnection directamente
         conn = st.connection("gsheets", type=GSheetsConnection)
         df = conn.read(worksheet="Sheet1", ttl=300)
     except Exception as e:
