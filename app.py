@@ -139,6 +139,9 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
     """
     Genera un gráfico combinado (Barras + Línea Acumulada) para la Curva Pareto ABC.
     """
+    if df_input.empty:
+        return None
+
     df_pareto = (
         df_input.groupby("Descripción del artículo")["Cantidad"]
         .sum()
@@ -178,7 +181,7 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
         )
     )
 
-    # Línea de Porcentaje Acumulado
+    # Línea de Porcentaje Acumulado (Vinculada al eje y2)
     fig.add_trace(
         go.Scatter(
             x=df_plot["Descripción del artículo"],
@@ -192,21 +195,11 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
         )
     )
 
-    # Línea corte Pareto (80%)
-    fig.add_shape(
-        type="line",
-        x0=-0.5,
-        x1=len(df_plot) - 0.5,
-        y0=80,
-        y1=80,
-        yref="y2",
-        line=dict(color="#EF4444", width=2, dash="dash"),
-    )
-
+    # Configuración de ejes y diseño
     fig.update_layout(
         title="Curva Pareto ABC (Top 20 SKUs por Volumen)",
-        xaxis=dict(title="Producto", tickangle=-45),
-        yaxis=dict(title="Volumen Entregado"),
+        xaxis_title="Producto",
+        yaxis_title="Volumen Entregado",
         yaxis2=dict(
             title="% Acumulado",
             overlaying="y",
@@ -214,10 +207,22 @@ def crear_grafico_pareto(df_input: pd.DataFrame):
             range=[0, 105],
             showgrid=False,
         ),
+        xaxis=dict(tickangle=-45),
         legend=dict(orient="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(l=10, r=10, t=50, b=100),
         height=420,
     )
+
+    # Añadir línea de corte del 80%
+    if len(df_plot) > 0:
+        fig.add_hline(
+            y=80,
+            yref="y2",
+            line_dash="dash",
+            line_color="#EF4444",
+            annotation_text="Límite 80% (Pareto)",
+            annotation_position="bottom right"
+        )
 
     return fig
 
