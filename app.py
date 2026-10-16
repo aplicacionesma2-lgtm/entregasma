@@ -279,6 +279,7 @@ def load_data() -> pd.DataFrame:
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
         df = conn.read(worksheet="Sheet1", ttl=300)
+        return df
     except Exception as e:
         st.error(f"Error al conectar con Google Sheets: {e}")
         st.stop()
