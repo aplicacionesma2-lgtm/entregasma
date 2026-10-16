@@ -891,16 +891,13 @@ elif st.session_state.pagina_actual == "kpis":
 
         st.markdown("---")
 
-        # SECCIÓN PARETO (ROBUSTA Y SIN EJE SECUNDARIO)
+        # SECCIÓN PARETO DISPUESTA VERTICALMENTE
         st.markdown("### 📈 Análisis de Concentración Pareto (Curva ABC)")
         resultado_pareto = crear_grafico_pareto(df_kpi)
         if resultado_pareto:
             fig_barras, fig_linea = resultado_pareto
-            col_p1, col_p2 = st.columns(2)
-            with col_p1:
-                st.plotly_chart(fig_barras, use_container_width=True)
-            with col_p2:
-                st.plotly_chart(fig_linea, use_container_width=True)
+            st.plotly_chart(fig_barras, use_container_width=True)
+            st.plotly_chart(fig_linea, use_container_width=True)
         else:
             st.info("Sin información para generar la curva Pareto.")
 
