@@ -279,9 +279,13 @@ REQUIRED_COLS = [
 @st.cache_data(ttl=300, show_spinner="Cargando datos desde Google Sheets…")
 def load_data() -> pd.DataFrame:
     try:
-        # Extraer credenciales directamente de st.secrets
         sec_gsheets = st.secrets["connections"]["gsheets"]
         credentials_dict = dict(sec_gsheets)
+
+        # Sanitizar private_key reemplazando secuencias de texto literal '\n' por saltos reales
+        if "private_key" in credentials_dict:
+            pk = credentials_dict["private_key"]
+            credentials_dict["private_key"] = pk.replace("\\n", "\n")
 
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -297,6 +301,7 @@ def load_data() -> pd.DataFrame:
 
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
+        return df
     except Exception as e:
         st.error(f"Error al conectar con Google Sheets: {e}")
         st.stop()
